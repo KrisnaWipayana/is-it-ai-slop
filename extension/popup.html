@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Is It AI Slop?</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo-group">
+        <span class="logo-icon"></span>
+        <h1 class="logo-title">Is It AI Slop?</h1>
+      </div>
+      <span id="domainBadge" class="domain-badge" title="Active Page">Detecting...</span>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content">
+
+      <!-- Idle / Ready View -->
+      <section id="idleView" class="view">
+        <div class="idle-card">
+          <div class="scanner-graphic">
+            <div class="pulse-ring"></div>
+            <div class="scanner-core"></div>
+          </div>
+          <p class="idle-title">Detect AI Slop</p>
+          <p class="idle-subtitle">Scan webpage text elements to identify boilerplate, clichés, and machine-generated content.</p>
+          <button id="startScanBtn" class="primary-btn">
+            <span>Scan Page</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Scanning / Loading View -->
+      <section id="scanningView" class="view hidden">
+        <div class="loading-container">
+          <div class="spinner"></div>
+          <p class="loading-title">Analyzing elements...</p>
+          <p class="loading-subtitle">Extracting readable content and evaluating signals</p>
+        </div>
+      </section>
+
+      <!-- Result View -->
+      <section id="resultView" class="view hidden">
+        <!-- Score Card -->
+        <div class="score-card">
+          <div class="gauge-container">
+            <svg class="gauge-svg" viewBox="0 0 120 120">
+              <circle class="gauge-bg" cx="60" cy="60" r="50"></circle>
+              <circle id="gaugeProgress" class="gauge-bar" cx="60" cy="60" r="50"></circle>
+            </svg>
+            <div class="gauge-content">
+              <span id="scoreNumber" class="score-value">0</span>
+              <span class="score-unit">%</span>
+            </div>
+          </div>
+
+          <div class="verdict-container">
+            <div class="verdict-header-row">
+              <span id="verdictBadge" class="verdict-badge clean">Likely Human</span>
+              <span id="engineBadge" class="engine-badge">XGBoost ONNX</span>
+            </div>
+            <p id="verdictDesc" class="verdict-desc">Content appears natural with low AI markers.</p>
+          </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="stats-row">
+          <div class="stat-item">
+            <span class="stat-label">Words</span>
+            <span id="statWords" class="stat-value">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Blocks</span>
+            <span id="statBlocks" class="stat-value">0</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Flagged</span>
+            <span id="statFlagged" class="stat-value">0</span>
+          </div>
+        </div>
+
+        <!-- In-page Highlight Toggle -->
+        <div class="toggle-card">
+          <div class="toggle-info">
+            <span class="toggle-title">Highlight on page</span>
+            <span class="toggle-sub">Outline flagged paragraphs in-place</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="highlightToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- Indicators / Cliché Badges -->
+        <div id="indicatorsSection" class="section hidden">
+          <div class="section-header">
+            <span class="section-title">Detected Indicators</span>
+          </div>
+          <div id="indicatorTags" class="tag-cloud"></div>
+        </div>
+
+        <!-- Flagged Paragraphs List -->
+        <div id="flaggedSection" class="section hidden">
+          <div class="section-header">
+            <span class="section-title">Flagged Snippets</span>
+            <span id="flaggedCountBadge" class="pill-badge">0</span>
+          </div>
+          <div id="flaggedList" class="block-list"></div>
+        </div>
+
+        <!-- Action footer -->
+        <div class="action-footer">
+          <button id="rescanBtn" class="secondary-btn">Re-scan</button>
+        </div>
+      </section>
+
+      <!-- Unsupported / Error View -->
+      <section id="errorView" class="view hidden">
+        <div class="error-card">
+          <div class="error-icon">!</div>
+          <p id="errorTitle" class="error-title">Cannot scan this page</p>
+          <p id="errorMessage" class="error-subtitle">Is It AI Slop? cannot run on browser system pages or local file urls.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
