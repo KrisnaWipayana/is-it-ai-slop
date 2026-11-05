@@ -129,7 +129,43 @@ The extension extracts the following 11 numerical features for every paragraph:
 
 ---
 
-### 3. Training & Exporting in Google Colab (Step-by-Step)
+### 3. What Does a Training Dataset Look Like?
+
+The model only needs **two columns** per row:
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `text` | `string` | A paragraph or article of prose text |
+| `label` | `int` | `0` = Human-written, `1` = AI-generated |
+
+That's it. The 11-dimensional feature vector is computed from `text` automatically during training — you never need to hand-craft features.
+
+#### Minimal Dataset Example
+
+```csv
+text,label
+"The committee reviewed three proposals before the lunch break. Two were rejected outright; one was sent back for revision. Nobody seemed particularly surprised.",0
+"In today's fast-paced world, navigating the complex tapestry of modern challenges is a testament to human resilience. Furthermore, it is important to remember that seamlessly integrating new approaches serves as a vital component of progress.",1
+"She left the keys on the counter again. I found them under a coffee mug, right next to a note that just said 'sorry' in blue pen.",0
+"Delving into the intricacies of this subject, one can observe a plethora of fascinating insights. Moreover, these insights serve as a beacon of innovation for future endeavors.",1
+```
+
+#### Where to Find Training Data
+
+You need paired rows of **human-written** and **AI-generated** text covering similar topics. Some ready-to-use public datasets:
+
+| Dataset | Source | Description |
+| :--- | :--- | :--- |
+| [`aadityaubhat/GPT-wiki-intro`](https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro) | HuggingFace | Wikipedia intros paired with GPT-generated equivalents — **used by the default model** |
+| [`Hello-SimpleAI/HC3`](https://huggingface.co/datasets/Hello-SimpleAI/HC3) | HuggingFace | Human vs ChatGPT answers across Reddit, medicine, finance, and more |
+| [`artem9k/ai-text-detection-pile`](https://huggingface.co/datasets/artem9k/ai-text-detection-pile) | HuggingFace | Mixed sources: news, Wikipedia, creative writing vs GPT-3/4 |
+| Your own data | — | Anything where you know the source — blog posts you wrote vs outputs from ChatGPT on the same prompt |
+
+> **Tip:** More topic diversity = better generalization. A model trained only on Wikipedia introductions may underperform on marketing copy or blog posts. Mix multiple datasets for a more robust classifier.
+
+---
+
+### 4. Training & Exporting in Google Colab (Step-by-Step)
 
 Copy and run these blocks in a new **[Google Colab](https://colab.research.google.com/)** notebook:
 
