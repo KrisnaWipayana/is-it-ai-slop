@@ -5,6 +5,8 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Cross-browser runtime: Firefox exposes `browser`, Chrome exposes `chrome`
+  const _browser = (typeof browser !== 'undefined' ? browser : chrome);
   // DOM Elements
   const domainBadge = document.getElementById('domainBadge');
   const idleView = document.getElementById('idleView');
@@ -53,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Get active tab and verify support
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabs = await _browser.tabs.query({ active: true, currentWindow: true });
     if (!tabs || tabs.length === 0) {
       showError('No active tab', 'Please select an open browser tab.');
       return;
@@ -84,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Ensures content scripts are injected before messaging
   async function ensureScriptsInjected() {
     try {
-      await chrome.scripting.executeScript({
+      await _browser.scripting.executeScript({
         target: { tabId: currentTabId },
         files: [
           'lib/onnxruntime/ort.min.js',
@@ -101,7 +103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Checks status of content script in active tab
   async function checkPageStatus() {
     try {
-      const response = await chrome.tabs.sendMessage(currentTabId, { action: 'GET_STATUS' });
+      const response = await _browser.tabs.sendMessage(currentTabId, { action: 'GET_STATUS' });
       if (response && response.scanned) {
         // Trigger a fresh scan or request current results
         runScan();
@@ -121,7 +123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await ensureScriptsInjected();
 
-      const response = await chrome.tabs.sendMessage(currentTabId, { action: 'SCAN_PAGE' });
+      const response = await _browser.tabs.sendMessage(currentTabId, { action: 'SCAN_PAGE' });
 
       if (!response || !response.success) {
         throw new Error(response ? response.error : 'Failed to communicate with page.');
@@ -228,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Click to scroll
         item.addEventListener('click', () => {
-          chrome.tabs.sendMessage(currentTabId, {
+          _browser.tabs.sendMessage(currentTabId, {
             action: 'SCROLL_TO_BLOCK',
             blockId: b.id
           });
@@ -273,7 +275,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   highlightToggle.addEventListener('change', (e) => {
     if (!currentTabId) return;
-    chrome.tabs.sendMessage(currentTabId, {
+    _browser.tabs.sendMessage(currentTabId, {
       action: 'TOGGLE_HIGHLIGHTS',
       enable: e.target.checked
     });

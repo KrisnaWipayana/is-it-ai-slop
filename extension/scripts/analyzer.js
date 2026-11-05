@@ -52,14 +52,16 @@
         }
 
         try {
-          if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+          // Cross-browser runtime: Firefox exposes `browser`, Chrome exposes `chrome`
+          const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
+          if (_runtime && _runtime.runtime && _runtime.runtime.getURL) {
             // Configure local wasm paths so ONNX does not request external assets
             if (ort.env && ort.env.wasm) {
-              ort.env.wasm.wasmPaths = chrome.runtime.getURL('lib/onnxruntime/');
+              ort.env.wasm.wasmPaths = _runtime.runtime.getURL('lib/onnxruntime/');
               ort.env.wasm.numThreads = 1;
             }
 
-            const modelUrl = chrome.runtime.getURL('models/ai-slop_model.onnx');
+            const modelUrl = _runtime.runtime.getURL('models/ai-slop_model.onnx');
             const res = await fetch(modelUrl);
             if (res.ok) {
               const buffer = await res.arrayBuffer();

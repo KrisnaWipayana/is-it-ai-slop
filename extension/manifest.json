@@ -3,10 +3,19 @@
   "name": "Is It AI Slop?",
   "version": "1.0.0",
   "description": "Minimalist browser extension to detect AI-generated slop and low-quality boilerplate text on websites.",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "is-it-ai-slop@extension",
+      "strict_min_version": "109.0"
+    }
+  },
+
   "permissions": [
     "activeTab",
     "scripting"
   ],
+
   "action": {
     "default_popup": "popup.html",
     "default_title": "Is It AI Slop? - Scan Page",
@@ -16,11 +25,13 @@
       "128": "icons/icon128.png"
     }
   },
+
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -33,11 +44,14 @@
       "run_at": "document_idle"
     }
   ],
+
   "web_accessible_resources": [
     {
       "resources": [
-        "lib/onnxruntime/*",
-        "models/*"
+        "lib/onnxruntime/ort.min.js",
+        "lib/onnxruntime/ort-wasm.wasm",
+        "lib/onnxruntime/ort-wasm-simd.wasm",
+        "models/ai-slop_model.onnx"
       ],
       "matches": ["<all_urls>"]
     }

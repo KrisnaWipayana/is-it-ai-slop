@@ -156,8 +156,11 @@
     }, 1600);
   }
 
+  // Cross-browser runtime: Firefox exposes `browser`, Chrome exposes `chrome`
+  const _browser = (typeof browser !== 'undefined' ? browser : chrome);
+
   // Listen for messages from popup
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  _browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || !message.action) return false;
 
     switch (message.action) {

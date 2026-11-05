@@ -20,7 +20,7 @@ flowchart TD
 ```
 
 1. **Out-of-the-Box Mode (Zero Dependencies, No Model Needed)**:
-   - If you clone this repository and run the extension without any `.onnx` model file, **it works immediately**!
+   - If you clone this repository and run the extension without any `.onnx` model file, **it works immediately**
    - Uses the built-in linguistic heuristic engine: detects 18+ high-probability AI clichés, sentence length monotony, Type-Token Ratio (vocabulary diversity), and formal transition adverb abuse.
    - Fast (< 2ms), 100% client-side, zero setup.
 
@@ -34,15 +34,32 @@ flowchart TD
 
 No build tools, Python, or Node.js required to run the extension.
 
+### Chrome / Chromium (Brave, Edge, Arc)
+
 1. Clone or download this repository:
    ```bash
    git clone https://github.com/your-username/is-it-slop.git
    ```
-2. Open Google Chrome (or any Chromium browser like Brave, Edge, or Arc).
-3. Navigate to `chrome://extensions/`.
-4. Turn on the **Developer mode** toggle in the top-right corner.
-5. Click **Load unpacked** and select the [`extension/`](./extension) directory.
-6. Pin **Is It AI Slop?** to your toolbar and click **Scan Page** on any article or blog!
+2. Open Google Chrome and navigate to `chrome://extensions/`.
+3. Turn on the **Developer mode** toggle in the top-right corner.
+4. Click **Load unpacked** and select the [`extension/`](./extension) directory.
+5. Pin **Is It AI Slop?** to your toolbar and click **Scan Page** on any article or blog.
+
+### Firefox
+
+> **Note:** Firefox's Manifest V3 support is still experimental. The extension runs in temporary mode (resets on browser restart) until it is published to [addons.mozilla.org](https://addons.mozilla.org).
+
+1. Clone or download this repository:
+   ```bash
+   git clone https://github.com/your-username/is-it-slop.git
+   ```
+2. Open Firefox and navigate to `about:debugging`.
+3. Click **This Firefox** in the left sidebar.
+4. Click **Load Temporary Add-on…**.
+5. Navigate into the `extension/` directory and select **`manifest.json`** (Firefox requires the manifest file specifically — not the directory).
+6. The extension icon will appear in your toolbar. Click it and hit **Scan Page** on any article.
+
+> **Tip:** If the extension disappears after restarting Firefox, repeat steps 2–5 to reload it. This is a Firefox limitation for unpacked extensions — it does not affect Chrome.
 
 ---
 
@@ -209,7 +226,7 @@ print("Model downloaded successfully!")
    extension/models/ai-slop_model.onnx
    ```
 2. In Chrome, go to `chrome://extensions/` and click **Reload (↻)**.
-3. The popup verdict badge will display **`XGBoost (Calibrated ONNX)`** indicating that your custom model is active!
+3. The popup verdict badge will display **`XGBoost (Calibrated ONNX)`** indicating that your custom model is active.
 
 ---
 
