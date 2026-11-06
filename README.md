@@ -1,38 +1,178 @@
 # Is It AI Slop?
 
-A minimalist, privacy-first browser extension to detect AI-generated slop, boilerplate marketing text, and low-quality machine content on any website.
+A minimalist, high-precision browser extension to detect AI-generated slop, boilerplate marketing text, and low-quality machine content on any website.
 
 ---
 
-## Dual-Engine Architecture (Works With or Without ML Models)
+## Multi-Engine Architecture
 
-This project is built with a **modular dual-engine design**:
+This project is built with a **modular multi-engine design**:
 
 ```mermaid
 flowchart TD
-    A["Webpage Text Blocks"] --> B["scripts/extractor.js"]
+    A["Webpage Text Blocks"] --> B["scripts/extractor.js<br/>(Text Filter & Sentence/Paragraph Chunking)"]
     B --> C["scripts/analyzer.js"]
-    C --> D{"ai-slop_model.onnx present?"}
-    D -- "YES" --> E["Mode 1: Hybrid ML + Heuristic Engine<br/>(XGBoost / LightGBM ONNX Runtime Web)"]
-    D -- "NO" --> F["Mode 2: Zero-Dependency Heuristic Engine<br/>(18+ Clichés, Cadence Variance, TTR)"]
-    E --> G["Minimalist Popup & On-Page Highlights"]
-    F --> G
+    C --> D{"TYPESAFE_API_KEY set?"}
+    D -- "YES" --> E["Mode 1: TypeSafe AI JEV Cloud Engine<br/>(System One Model • Calibrated Noul & Choice Decisions)"]
+    D -- "NO" --> F{"ai-slop_model.onnx present?"}
+    F -- "YES" --> G["Mode 2: Hybrid ML + Heuristic Engine<br/>(XGBoost / LightGBM ONNX Runtime Web)"]
+    F -- "NO" --> H["Mode 3: Zero-Dependency Heuristic Engine<br/>(18+ Clichés, Cadence Variance, TTR)"]
+    E --> I["Minimalist Popup & On-Page Highlights"]
+    G --> I
+    H --> I
 ```
 
-1. **Out-of-the-Box Mode (Zero Dependencies, No Model Needed)**:
-   - If you clone this repository and run the extension without any `.onnx` model file, **it works immediately**
-   - Uses the built-in linguistic heuristic engine: detects 18+ high-probability AI clichés, sentence length monotony, Type-Token Ratio (vocabulary diversity), and formal transition adverb abuse.
-   - Fast (< 2ms), 100% client-side, zero setup.
+1. **Mode 1: TypeSafe AI JEV Engine (Flagship Third-Party Model)**:
+   - Evaluates text using **Jev**, the flagship "System One" decision model developed by **TypeSafe AI**.
+   - Unlike conventional generative LLMs that output chat token-by-token, Jev executes typed evaluation questions in a single parallel pass, returning calibrated probabilities (`noul`) and categorical choices.
+   - Requires setting `TYPESAFE_API_KEY` via `.env`, `extension/env.js`, or the extension popup settings.
 
-2. **Bring-Your-Own-Model (BYOM) Mode**:
-   - Other developers can train **any model they want** (XGBoost, LightGBM, CatBoost, Scikit-Learn, or fine-tuned Transformers) and plug it in.
-   - Place your exported ONNX model at `extension/models/ai-slop_model.onnx`, and the extension will automatically switch to the **Hybrid ML Engine**.
+2. **Mode 2: Bring-Your-Own-Model (BYOM) In-Browser ML**:
+   - Run custom trained models (XGBoost, LightGBM, CatBoost) locally inside the browser via ONNX Runtime Web.
+   - Evaluates an 11-dimensional stylometric feature vector in `< 0.2ms` without sending text outside the browser.
+   - Active when `models/ai-slop_model.onnx` is present and JEV is not configured.
+
+3. **Mode 3: Zero-Dependency Heuristic Engine (Out-of-the-Box)**:
+   - Works immediately with zero configuration and zero external requests.
+   - Detects 18+ high-probability AI clichés, sentence length monotony, Type-Token Ratio (vocabulary diversity), and formal transition adverb abuse.
+
+---
+
+## TypeSafe AI JEV Model
+
+### 1. What is TypeSafe AI JEV?
+
+**Jev** is a flagship model from **TypeSafe AI** built specifically for machine-native decision-making and software automation.
+
+- **"System One" Decision Model**: Traditional Large Language Models (LLMs) operate like human "System 2" deliberate reasoning—producing words sequentially and taking seconds per paragraph. Jev operates like "System 1"—a fast, non-autoregressive decision engine optimized for structured, typed decisions.
+- **Typed Primitive Questions**: Instead of conversational prompts, Jev accepts a state payload alongside a set of typed questions (`noul`, `score`, or `choice`).
+- **Parallel Single-Pass Evaluation**: Jev evaluates all questions simultaneously in parallel, delivering high throughput and low latency.
+- **Calibrated Probabilities**: Jev returns exact numerical confidence and probabilities (e.g., `noul: 0.88`), allowing developer code to implement clean threshold logic.
+
+### 2. Request & Response Specification
+
+The extension communicates with TypeSafe AI via the official System One decision endpoint:
+
+- **Endpoint**: `POST https://api.typesafe.ai/v1/systemone`
+- **Headers**:
+  ```http
+  Authorization: Bearer <TYPESAFE_API_KEY>
+  Content-Type: application/json
+  ```
+- **Request Body**:
+  ```json
+  {
+    "model": "jev-latest",
+    "state": "In today's fast-paced digital world, navigating the intricate tapestry of modern technology is a testament to human innovation...",
+    "questions": {
+      "is_slop": {
+        "type": "noul",
+        "instructions": "Is this text AI-generated slop, repetitive boilerplate, or low-quality synthetic content?"
+      },
+      "style_choice": {
+        "type": "choice",
+        "instructions": "Identify the primary writing style of this text:",
+        "criteria": {
+          "human": "Authentic human prose with natural voice and cadence",
+          "formulaic": "Formulaic corporate style or standard academic prose",
+          "ai_slop": "Typical AI clichés, repetitive adverbs, or machine-generated filler"
+        }
+      }
+    }
+  }
+  ```
+- **Response Format**:
+  ```json
+  {
+    "model": "jev-latest",
+    "answers": {
+      "is_slop": {
+        "type": "noul",
+        "noul": 0.88
+      },
+      "style_choice": {
+        "type": "choice",
+        "choice": "ai_slop"
+      }
+    },
+    "usage": {
+      "input_tokens": 52,
+      "output_tokens": 4
+    }
+  }
+  ```
+- **Scoring**: The extension converts `answers.is_slop.noul` (a float between `0.0` and `1.0`) directly into an intuitive `0–100%` AI Slop score.
+
+### 3. Text Filtering & Sentence/Paragraph Chunking
+
+To prevent sending excessively large text blocks in a single call to JEV (which could cause token limits, slow response times, or diluted paragraph scoring), [`extension/scripts/extractor.js`](./extension/scripts/extractor.js) implements intelligent chunking:
+
+1. **Word Threshold (`JEV_MAX_WORDS_PER_CALL`)**:
+   - Defaults to **150 words** (configurable via `.env` or `extension/env.js`).
+   - If an extracted prose block contains fewer than or equal to 150 words, it is sent in a single call.
+2. **Chunking Strategy**:
+   - **1st Benchmark — Paragraph Breaks (`\n` / `\n\n`)**: If an element contains multiple paragraphs, it splits along paragraph boundaries.
+   - **2nd Benchmark — Period Delimiters (`.`)**: If an individual paragraph exceeds the threshold, the extractor splits it into complete sentences using the period (`.`) delimiter.
+   - Sentences are accumulated up to the word threshold; once adding another sentence would exceed the limit, a new chunk (and new API call) is spawned.
+3. **DOM Element Mapping**:
+   - Each chunk retains a reference to its parent DOM element (`elementId`).
+   - If any chunk in a long article section is classified as slop, the parent element on the page is highlighted with the maximum score from its chunks, and clicking a flagged snippet in the popup scrolls directly to that section.
+
+### 4. Browser Security & Background Dispatch
+
+In Chromium and Firefox extensions (Manifest V3), webpage Content Security Policies (CSP) frequently block client-side scripts from making external `fetch()` calls. 
+
+To overcome this, **Is It AI Slop?** dispatches JEV requests through [`extension/scripts/background.js`](./extension/scripts/background.js) (the background service worker). With `"host_permissions": ["https://api.typesafe.ai/*"]`, calls execute in the extension's privileged context, guaranteeing reliability on any website (Wikipedia, Medium, news portals, etc.).
+
+---
+
+## Environment Variable Setup (`TYPESAFE_API_KEY`)
+
+You can provide your TypeSafe AI API key through any of the following three methods:
+
+### Method A: Using `.env` and Sync Script (Recommended for Developers)
+
+1. Copy the example environment template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Open `.env` and fill in your credentials:
+   ```env
+   TYPESAFE_API_KEY=your_actual_typesafe_api_key_here
+   JEV_API_URL=https://api.typesafe.ai/v1/systemone
+   JEV_MODEL=jev-latest
+   JEV_MAX_WORDS_PER_CALL=150
+   ```
+3. Sync into the extension:
+   ```bash
+   npm run sync-env
+   ```
+   *(Or simply run `node scripts/sync-env.js`)*.
+
+### Method B: Directly Editing `extension/env.js`
+
+Open [`extension/env.js`](./extension/env.js) and insert your key:
+```javascript
+window.ENV = {
+  TYPESAFE_API_KEY: 'your_actual_typesafe_api_key_here',
+  JEV_API_URL: 'https://api.typesafe.ai/v1/systemone',
+  JEV_MODEL: 'jev-latest',
+  JEV_MAX_WORDS_PER_CALL: 150
+};
+```
+
+### Method C: Live via the Extension Popup Settings UI
+
+1. Click the extension icon in your browser toolbar.
+2. Click the **gear icon (⚙️)** in the popup header.
+3. Paste your TypeSafe AI API Key into the input field and click **Save Settings**.
+4. The key is securely saved into `chrome.storage.local` and activated immediately without needing to reload or edit files.
 
 ---
 
 ## A Quick Start (Running the Extension)
 
-No build tools, Python, or Node.js required to run the extension.
+No build tools or servers required.
 
 ### Chrome / Chromium (Brave, Edge, Arc)
 
@@ -47,222 +187,44 @@ No build tools, Python, or Node.js required to run the extension.
 
 ### Firefox
 
-> **Note:** Firefox's Manifest V3 support is still experimental. The extension runs in temporary mode (resets on browser restart) until it is published to [addons.mozilla.org](https://addons.mozilla.org).
+> **Note:** Firefox runs in temporary add-on mode until published to AMO.
 
-1. Clone or download this repository:
-   ```bash
-   git clone https://github.com/your-username/is-it-slop.git
-   ```
-2. Open Firefox and navigate to `about:debugging`.
-3. Click **This Firefox** in the left sidebar.
-4. Click **Load Temporary Add-on…**.
-5. Navigate into the `extension/` directory and select **`manifest.json`** (Firefox requires the manifest file specifically — not the directory).
-6. The extension icon will appear in your toolbar. Click it and hit **Scan Page** on any article.
-
-> **Tip:** If the extension disappears after restarting Firefox, repeat steps 2–5 to reload it. This is a Firefox limitation for unpacked extensions — it does not affect Chrome.
+1. Open Firefox and navigate to `about:debugging`.
+2. Click **This Firefox** in the left sidebar.
+3. Click **Load Temporary Add-on…**.
+4. Select [`extension/manifest.json`](./extension/manifest.json).
+5. Click **Scan Page** on any article.
 
 ---
 
 ## Model Training & BYOM Guide (External Lab)
 
-> **Note on Model Training:** Model training happens **outside this repository**. We strongly recommend using **[Google Colab](https://colab.research.google.com/)** for free cloud CPU/GPU environments with zero local installation overhead.
+> **Note:** If you want to train a custom local model rather than using TypeSafe AI JEV, model training happens outside this repository (e.g. in [Google Colab](https://colab.research.google.com/)).
 
 ### 1. Why an 11-Dimensional Numerical Vector?
 
-Instead of running a heavy 500MB Transformer inside Chrome (which causes tab freezing and battery drain), this extension uses **compact decision trees (GBDTs)** running in-browser via ONNX Runtime Web.
+For users running the local ONNX engine, the extension calculates an 11-dimensional stylometric feature vector in pure JavaScript:
 
-Trees cannot read raw text; they require structured numbers. The 11 dimensions capture a mathematical **"stylometric fingerprint"** of *how* text was written rather than what topic it discusses:
+1. **Lightning Fast (< 0.2ms)**: Calculated without external tokenizers or large WASM downloads.
+2. **Topic-Agnostic**: Measures rhythm, pacing, and vocabulary diversity rather than keywords.
+3. **Burstiness Detection**: Humans naturally vary sentence length (high standard deviation); LLMs converge toward monotonic pacing.
+4. **Explainability**: Allows the popup to display reasons (e.g., *"3 AI clichés detected"*, *"Low sentence variance"*).
 
-1. **Lightning Fast (< 0.2ms)**: Calculated in pure JavaScript with zero external tokenizer dependencies or heavy WASM downloads.
-2. **Topic-Agnostic**: Measures rhythm, pacing, and vocabulary diversity rather than keywords—preventing false alarms on technical or unusual subject matter.
-3. **Burstiness Detection**: Humans naturally vary sentence length (high standard deviation). LLMs converge toward monotonic, uniform sentence pacing (low standard deviation).
-4. **Built-in Explainability**: Enables the UI to display *why* a paragraph was flagged (e.g., *"Low sentence variance"*, *"3 AI clichés detected"*).
-
----
-
-### 2. Model Input Signature & Data Example
-
-The extension extracts the following 11 numerical features for every paragraph:
+### 2. Model Input Signature & 11D Features
 
 | Index | Feature Name | Description |
 | :--- | :--- | :--- |
 | `0` | `word_count` | Number of words in block |
 | `1` | `sent_count` | Number of sentences |
 | `2` | `avg_sent_len` | Mean sentence length (words per sentence) |
-| `3` | `std_sent_len` | **Cadence variance**: Standard deviation of sentence length (monotony check) |
+| `3` | `std_sent_len` | **Cadence variance**: Standard deviation of sentence length |
 | `4` | `ttr` | **Type-Token Ratio**: Lexical richness (`unique_words / total_words`) |
 | `5` | `root_ttr` | Length-stabilized vocabulary richness (`unique_words / sqrt(word_count)`) |
-| `6` | `transition_ratio` | Ratio of sentences starting with formal transition adverbs (*"Furthermore,"*) |
+| `6` | `transition_ratio` | Ratio of sentences starting with formal transition adverbs |
 | `7` | `cliche_hits` | Total count of high-probability AI clichés found |
 | `8` | `cliche_density` | Clichés per 100 words |
-| `9` | `avg_word_len` | Average character length per word (syllabic weight) |
-| `10` | `comma_density` | Serial comma frequency per word (complex clause chaining) |
-
-#### Real-World Example: Raw Text to 11D Vector
-
-**Sample Input Text (AI Slop Paragraph):**
-> *"In today's fast-paced digital world, navigating the intricate tapestry of modern technology is a testament to human innovation. Furthermore, it is important to remember that seamlessly integrating AI into our daily workflows serves as a vital component and game-changer. Let us delve into how to unlock the power of this paradigm."*
-
-**Extracted 11-Dimensional Feature Vector:**
-```json
-[
-  49.0,   // [0]  word_count: 49 words
-  3.0,    // [1]  sent_count: 3 sentences
-  16.33,  // [2]  avg_sent_len: ~16.3 words per sentence
-  1.25,   // [3]  std_sent_len: 1.25 (Very low variance -> robotic pacing)
-  0.88,   // [4]  ttr: 43 unique words / 49 total words
-  6.14,   // [5]  root_ttr: 43 / sqrt(49)
-  0.33,   // [6]  transition_ratio: 1 out of 3 sentences starts with "Furthermore,"
-  8.0,    // [7]  cliche_hits: "fast-paced world", "tapestry", "testament to", "delve into", etc.
-  16.33,  // [8]  cliche_density: (8 / 49) * 100
-  5.80,   // [9]  avg_word_len: 5.8 characters per word
-  0.061   // [10] comma_density: 3 commas / 49 words
-]
-```
-
-**Contrast with Authentic Human Writing:**
-> *"Yesterday I replaced the leaking radiator valve with a brass wrench and fresh Teflon tape. It took two tries because the old threads were stripped, but the heat is finally working again."*
-> - `std_sent_len`: **6.4** (natural human pacing variation)
-> - `cliche_hits`: **0**
-> - `transition_ratio`: **0.0**
-> - `label`: **0** (Human)
-
----
-
-### 3. What Does a Training Dataset Look Like?
-
-The model only needs **two columns** per row:
-
-| Column | Type | Description |
-| :--- | :--- | :--- |
-| `text` | `string` | A paragraph or article of prose text |
-| `label` | `int` | `0` = Human-written, `1` = AI-generated |
-
-That's it. The 11-dimensional feature vector is computed from `text` automatically during training — you never need to hand-craft features.
-
-#### Minimal Dataset Example
-
-```csv
-text,label
-"The committee reviewed three proposals before the lunch break. Two were rejected outright; one was sent back for revision. Nobody seemed particularly surprised.",0
-"In today's fast-paced world, navigating the complex tapestry of modern challenges is a testament to human resilience. Furthermore, it is important to remember that seamlessly integrating new approaches serves as a vital component of progress.",1
-"She left the keys on the counter again. I found them under a coffee mug, right next to a note that just said 'sorry' in blue pen.",0
-"Delving into the intricacies of this subject, one can observe a plethora of fascinating insights. Moreover, these insights serve as a beacon of innovation for future endeavors.",1
-```
-
-#### Where to Find Training Data
-
-You need paired rows of **human-written** and **AI-generated** text covering similar topics. Some ready-to-use public datasets:
-
-| Dataset | Source | Description |
-| :--- | :--- | :--- |
-| [`aadityaubhat/GPT-wiki-intro`](https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro) | HuggingFace | Wikipedia intros paired with GPT-generated equivalents — **used by the default model** |
-| [`Hello-SimpleAI/HC3`](https://huggingface.co/datasets/Hello-SimpleAI/HC3) | HuggingFace | Human vs ChatGPT answers across Reddit, medicine, finance, and more |
-| [`artem9k/ai-text-detection-pile`](https://huggingface.co/datasets/artem9k/ai-text-detection-pile) | HuggingFace | Mixed sources: news, Wikipedia, creative writing vs GPT-3/4 |
-| Your own data | — | Anything where you know the source — blog posts you wrote vs outputs from ChatGPT on the same prompt |
-
-> **Tip:** More topic diversity = better generalization. A model trained only on Wikipedia introductions may underperform on marketing copy or blog posts. Mix multiple datasets for a more robust classifier.
-
----
-
-### 4. Training & Exporting in Google Colab (Step-by-Step)
-
-Copy and run these blocks in a new **[Google Colab](https://colab.research.google.com/)** notebook:
-
-#### Step A: Install dependencies & load dataset
-```python
-!pip install -q datasets pandas numpy scikit-learn xgboost onnxmltools onnxruntime
-
-from datasets import load_dataset
-import pandas as pd
-import numpy as np
-import re
-
-# Load 500 paired human and AI intro articles
-raw = load_dataset("aadityaubhat/GPT-wiki-intro", split="train[:500]")
-
-human_df = pd.DataFrame({"text": raw["wiki_intro"], "label": 0})
-ai_df = pd.DataFrame({"text": raw["generated_intro"], "label": 1})
-
-df = pd.concat([human_df, ai_df]).sample(frac=1.0, random_state=42).reset_index(drop=True)
-print(f"Loaded {len(df)} samples.")
-```
-
-#### Step B: Extract the 11 features
-```python
-CLICHE_PATTERNS = [
-    r"\bdelv(?:e|ing|es)\s+into\b", r"\ba\s+testament\s+to\b", r"\b(rich|intricate|complex)\s+tapestry\b",
-    r"\bin\s+today['’]?s\s+(fast-paced|rapidly|modern)\s+world\b", r"\bnavigat(?:e|ing)\s+(the\s+)?(landscape|complexities)\b",
-    r"\bseamlessly\s+(integrat|blend)\b", r"\bcrucial\s+role\b", r"\bvital\s+component\b",
-    r"\bgame[- ]changer\b", r"\bunlock(?:ing)?\s+the\s+power\b", r"\bit['’]?s\s+important\s+to\s+note\b",
-    r"\bfoster\s+(a\s+)?sense\b", r"\bembark\s+on\b", r"\bin\s+conclusion\b"
-]
-TRANSITION_REGEX = re.compile(r"^(furthermore|moreover|additionally|consequently|importantly|notably|ultimately|in essence|in summary)[,\s]", re.IGNORECASE)
-
-def extract_features(text):
-    text = str(text).strip()
-    words = re.findall(r"[\w]+", text)
-    word_count = max(len(words), 1)
-
-    sentences = [s.strip() for s in re.split(r"[.!?]+", text) if len(s.strip()) > 0]
-    sent_count = max(len(sentences), 1)
-    sent_lengths = [len(re.findall(r"[\w]+", s)) for s in sentences]
-    avg_sent_len = float(np.mean(sent_lengths)) if sent_lengths else 0.0
-    std_sent_len = float(np.std(sent_lengths)) if len(sent_lengths) > 1 else 0.0
-
-    lower_words = [w.lower() for w in words]
-    unique_words = len(set(lower_words))
-    ttr = unique_words / word_count
-    root_ttr = unique_words / np.sqrt(word_count)
-
-    transition_count = sum(1 for s in sentences if TRANSITION_REGEX.match(s))
-    transition_ratio = transition_count / sent_count
-    cliche_hits = sum(len(re.findall(pat, text, re.IGNORECASE)) for pat in CLICHE_PATTERNS)
-    cliche_density = (cliche_hits / word_count) * 100.0
-
-    avg_word_len = float(np.mean([len(w) for w in words])) if words else 0.0
-    comma_density = text.count(',') / word_count
-
-    return [word_count, sent_count, avg_sent_len, std_sent_len, ttr, root_ttr, transition_ratio, cliche_hits, cliche_density, avg_word_len, comma_density]
-
-X = np.array([extract_features(t) for t in df["text"]], dtype=np.float32)
-y = df["label"].values.astype(np.int32)
-```
-
-#### Step C: Train XGBoost & export to ONNX
-```python
-from xgboost import XGBClassifier
-from onnxmltools import convert_xgboost
-from onnxmltools.convert.common.data_types import FloatTensorType
-from google.colab import files
-
-# Train model
-model = XGBClassifier(n_estimators=100, max_depth=4, learning_rate=0.08, random_state=42)
-model.fit(X, y)
-
-# Convert to ONNX format
-initial_types = [('float_input', FloatTensorType([None, 11]))]
-onnx_model = convert_xgboost(model, initial_types=initial_types, target_opset=12)
-
-# Save and download
-output_name = "ai-slop_model.onnx"
-with open(output_name, "wb") as f:
-    f.write(onnx_model.SerializeToString())
-
-files.download(output_name)
-print("Model downloaded successfully!")
-```
-
----
-
-### 4. Activating Your Model in the Extension
-
-1. Move the downloaded `ai-slop_model.onnx` into the extension folder:
-   ```
-   extension/models/ai-slop_model.onnx
-   ```
-2. In Chrome, go to `chrome://extensions/` and click **Reload (↻)**.
-3. The popup verdict badge will display **`XGBoost (Calibrated ONNX)`** indicating that your custom model is active.
+| `9` | `avg_word_len` | Average character length per word |
+| `10` | `comma_density` | Serial comma frequency per word |
 
 ---
 
@@ -272,15 +234,17 @@ print("Model downloaded successfully!")
 is-it-slop/
 │
 ├── extension/                   # Complete Web Extension (Manifest V3)
-│   ├── manifest.json            # Extension configuration & permissions
-│   ├── popup.html               # Minimalist popup interface
+│   ├── manifest.json            # Extension configuration, permissions & host rules
+│   ├── env.js                   # Runtime environment variables (API keys & endpoints)
+│   ├── popup.html               # Minimalist popup interface with Settings view
 │   ├── popup.css                # Dark slate UI & radial progress meter
 │   ├── popup.js                 # Popup controller & state management
 │   ├── icons/                   # Extension icons (16px, 48px, 128px)
 │   │
 │   ├── scripts/
-│   │   ├── extractor.js         # Intelligent DOM prose extraction & metadata filtering
-│   │   ├── analyzer.js          # Dual-engine: ONNX inference + linguistic heuristics
+│   │   ├── extractor.js         # Intelligent DOM prose extraction & text chunking filter
+│   │   ├── analyzer.js          # Multi-engine: TypeSafe AI JEV, ONNX ML & Heuristics
+│   │   ├── background.js        # Background service worker for secure API calls
 │   │   └── content.js           # Content coordinator & in-page visual highlighter
 │   │
 │   ├── models/                  # Custom ONNX models (optional)
@@ -289,6 +253,15 @@ is-it-slop/
 │   └── lib/
 │       └── onnxruntime/         # In-browser ONNX Runtime Web library & WASM
 │
+├── scripts/
+│   └── sync-env.js              # Utility to sync .env to extension/env.js
+│
+├── test/
+│   └── test_suite.js            # Unit tests for chunking, JEV parser & heuristics
+│
+├── .env.example                 # Environment variables template
+├── .gitignore                   # Git ignore file protecting .env credentials
+├── package.json                 # Project npm scripts (sync-env, test)
 ├── LICENSE
 └── README.md
 ```
@@ -297,18 +270,9 @@ is-it-slop/
 
 ## Privacy & Security
 
-- **100% Local Inference**: All scanning and analysis happens completely on your machine.
-- **Zero Remote API Calls**: No webpage text or data is ever transmitted to an external server.
-- **Open Source**: Complete transparency into what is running inside your browser.
-
----
-
-## Contributing
-
-Contributions are warmly welcomed!
-- **Add new clichés & buzzwords**: Submit PRs to [`extension/scripts/analyzer.js`](./extension/scripts/analyzer.js).
-- **Improve element extraction**: Help filter edge cases in [`extension/scripts/extractor.js`](./extension/scripts/extractor.js).
-- **Share trained models**: Open issues or PRs sharing your ONNX model weights and training benchmarks.
+- **Local-First Flexibility**: If no API key is provided, 100% of the analysis runs client-side on your local machine with zero network calls.
+- **Secure Cloud Evaluation**: When using TypeSafe AI JEV, only the extracted article text chunks are sent to the official TypeSafe AI endpoint (`https://api.typesafe.ai/v1/systemone`). No browser history, cookies, or user identifiers are sent.
+- **Open Source**: Full transparency into all code running inside your browser.
 
 ---
 
