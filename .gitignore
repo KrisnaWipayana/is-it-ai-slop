@@ -1,0 +1,15 @@
+# Environment files
+.env
+.env.local
+
+# Node modules & temporary files
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Internal test files
+test
+
+# OS metadata
+.DS_Store
+Thumbs.db

@@ -85,6 +85,9 @@
 
   // Scans current page DOM and computes scores
   async function performScan() {
+    const wasHighlighted = highlightsActive;
+    clearHighlights();
+
     const blocks = extractor.extract();
     const result = await analyzer.analyze(blocks);
 
@@ -95,40 +98,61 @@
       // Strip element reference for serialization across chrome.runtime message passing
       blocks: result.blocks.map(b => ({
         id: b.id,
+        elementId: b.elementId || b.id,
         tagName: b.tagName,
         text: b.text,
         wordCount: b.wordCount,
         score: b.score,
         classification: b.classification,
         signals: b.signals,
-        metrics: b.metrics
+        metrics: b.metrics,
+        chunkIndex: b.chunkIndex,
+        totalChunks: b.totalChunks
       }))
     };
+
+    if (wasHighlighted) {
+      applyHighlights();
+    }
 
     return currentAnalysis;
   }
 
-  // Applies visual outlines & badges to elements on page
+  // Applies visual outlines & badges to elements on page (aggregating chunks per DOM element)
   function applyHighlights() {
     ensureStylesInjected();
     if (!currentAnalysis) return;
 
+    // Aggregate maximum score per DOM element ID
+    const elementMap = new Map();
     for (const block of currentAnalysis.blocks) {
       if (block.classification === 'clean') continue;
 
-      const el = document.querySelector(`[data-slop-id="${block.id}"]`);
+      const elId = block.elementId || block.id;
+      const existing = elementMap.get(elId);
+      if (!existing || block.score > existing.score) {
+        elementMap.set(elId, block);
+      }
+    }
+
+    for (const [elId, topBlock] of elementMap.entries()) {
+      const el = document.querySelector(`[data-slop-id="${elId}"]`);
       if (!el) continue;
 
-      const isHighSlop = block.classification === 'slop';
+      const isHighSlop = topBlock.classification === 'slop';
       const className = isHighSlop ? 'is-it-ai-slop-highlight-slop' : 'is-it-ai-slop-highlight-suspicious';
       el.classList.add(className);
 
       // Create floating badge if not already present
-      if (!el.querySelector(':scope > .is-it-ai-slop-badge')) {
-        const badge = document.createElement('span');
+      let badge = el.querySelector(':scope > .is-it-ai-slop-badge');
+      if (!badge) {
+        badge = document.createElement('span');
         badge.className = `is-it-ai-slop-badge ${isHighSlop ? 'is-it-ai-slop-badge-slop' : 'is-it-ai-slop-badge-suspicious'}`;
-        badge.textContent = `${block.score}% AI`;
+        badge.textContent = `${topBlock.score}% AI`;
         el.appendChild(badge);
+      } else {
+        badge.className = `is-it-ai-slop-badge ${isHighSlop ? 'is-it-ai-slop-badge-slop' : 'is-it-ai-slop-badge-suspicious'}`;
+        badge.textContent = `${topBlock.score}% AI`;
       }
     }
     highlightsActive = true;
@@ -144,9 +168,10 @@
     highlightsActive = false;
   }
 
-  // Scrolls to a specific block and briefly highlights it
+  // Scrolls to a specific block (or chunk parent) and briefly highlights it
   function scrollToBlock(blockId) {
-    const el = document.querySelector(`[data-slop-id="${blockId}"]`);
+    const el = document.querySelector(`[data-slop-id="${blockId}"]`) ||
+               document.querySelector(`[data-slop-id="${blockId.replace(/-c\d+$/, '')}"]`);
     if (!el) return;
 
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -167,8 +192,8 @@
       case 'SCAN_PAGE':
         performScan()
           .then(data => sendResponse({ success: true, data }))
-          .catch(err => sendResponse({ success: false, error: err.message }));
-        return true; // Keep channel open for async response
+          .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
+      return true; // Keep channel open for async response
 
       case 'TOGGLE_HIGHLIGHTS':
         if (message.enable ?? !highlightsActive) {
@@ -189,11 +214,13 @@
           success: true,
           scanned: currentAnalysis !== null,
           highlightsActive,
+          analysis: currentAnalysis,
           summary: currentAnalysis ? {
             overallScore: currentAnalysis.overallScore,
             classification: currentAnalysis.classification,
             totalWords: currentAnalysis.totalWords,
-            flaggedCount: currentAnalysis.flaggedBlockCount
+            flaggedCount: currentAnalysis.flaggedBlockCount,
+            modelEngine: currentAnalysis.modelEngine
           } : null
         });
         return false;

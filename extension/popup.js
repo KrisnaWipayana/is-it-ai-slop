@@ -1,25 +1,41 @@
 /**
  * Is It AI Slop? - Popup Controller
  * Coordinates scanning requests, renders minimalist dashboard visualizer,
- * and controls page highlighting interactions.
+ * manages TypeSafe AI JEV settings, and controls page highlighting interactions.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Cross-browser runtime: Firefox exposes `browser`, Chrome exposes `chrome`
   const _browser = (typeof browser !== 'undefined' ? browser : chrome);
-  // DOM Elements
+
+  // DOM Elements - Navigation & Views
   const domainBadge = document.getElementById('domainBadge');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+
   const idleView = document.getElementById('idleView');
   const scanningView = document.getElementById('scanningView');
   const resultView = document.getElementById('resultView');
   const errorView = document.getElementById('errorView');
+  const settingsView = document.getElementById('settingsView');
+
   const errorTitle = document.getElementById('errorTitle');
   const errorMessage = document.getElementById('errorMessage');
 
+  // DOM Elements - Settings
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const toggleKeyVisibility = document.getElementById('toggleKeyVisibility');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  const engineStatusDot = document.getElementById('engineStatusDot');
+  const currentEngineName = document.getElementById('currentEngineName');
+  const currentEngineDetail = document.getElementById('currentEngineDetail');
+
+  // DOM Elements - Main Controls
   const startScanBtn = document.getElementById('startScanBtn');
   const rescanBtn = document.getElementById('rescanBtn');
   const highlightToggle = document.getElementById('highlightToggle');
 
+  // DOM Elements - Results
   const scoreNumber = document.getElementById('scoreNumber');
   const gaugeProgress = document.getElementById('gaugeProgress');
   const verdictBadge = document.getElementById('verdictBadge');
@@ -43,15 +59,60 @@ document.addEventListener('DOMContentLoaded', async () => {
   gaugeProgress.style.strokeDashoffset = `${CIRCUMFERENCE}`;
 
   let currentTabId = null;
+  let previousView = idleView;
 
   // View state helper
   function showView(view) {
+    if (view !== settingsView) {
+      previousView = view;
+    }
     idleView.classList.add('hidden');
     scanningView.classList.add('hidden');
     resultView.classList.add('hidden');
     errorView.classList.add('hidden');
+    settingsView.classList.add('hidden');
     view.classList.remove('hidden');
   }
+
+  // Load and refresh engine status in settings
+  async function refreshEngineStatus() {
+    let activeKey = '';
+
+    // Check storage first
+    try {
+      if (_browser.storage && _browser.storage.local) {
+        const stored = await _browser.storage.local.get(['TYPESAFE_API_KEY']);
+        if (stored && stored.TYPESAFE_API_KEY) {
+          activeKey = stored.TYPESAFE_API_KEY.trim();
+        }
+      }
+    } catch (_) {
+      // Storage unavailable
+    }
+
+    // Fall back to window.ENV
+    if (!activeKey && typeof window !== 'undefined' && window.ENV && window.ENV.TYPESAFE_API_KEY) {
+      activeKey = window.ENV.TYPESAFE_API_KEY.trim();
+    }
+
+    if (apiKeyInput) {
+      apiKeyInput.value = activeKey;
+    }
+
+    if (activeKey) {
+      engineStatusDot.classList.remove('inactive');
+      currentEngineName.textContent = 'TypeSafe AI JEV (System One)';
+      currentEngineDetail.textContent = 'Active • Ultra-fast structured decisions & calibrated probabilities';
+      if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+    } else {
+      engineStatusDot.classList.add('inactive');
+      currentEngineName.textContent = 'Local Engine (ONNX / Heuristic)';
+      currentEngineDetail.textContent = 'Provide a TypeSafe AI API key to enable cloud System One evaluation';
+      if (engineBadge) engineBadge.textContent = 'Local Engine';
+    }
+  }
+
+  await refreshEngineStatus();
 
   // Get active tab and verify support
   try {
@@ -83,12 +144,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     showError('Initialization Error', err.message);
   }
 
-  // Ensures content scripts are injected before messaging
+  // Ensures content scripts and env are injected before messaging
   async function ensureScriptsInjected() {
     try {
       await _browser.scripting.executeScript({
         target: { tabId: currentTabId },
         files: [
+          'env.js',
           'lib/onnxruntime/ort.min.js',
           'scripts/extractor.js',
           'scripts/analyzer.js',
@@ -104,9 +166,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function checkPageStatus() {
     try {
       const response = await _browser.tabs.sendMessage(currentTabId, { action: 'GET_STATUS' });
-      if (response && response.scanned) {
-        // Trigger a fresh scan or request current results
-        runScan();
+      if (response && response.scanned && response.analysis) {
+        if (highlightToggle) {
+          highlightToggle.checked = !!response.highlightsActive;
+        }
+        renderResults(response.analysis);
+        showView(resultView);
       } else {
         showView(idleView);
       }
@@ -207,7 +272,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const tag = document.createElement('span');
         tag.className = 'block-tag';
-        tag.textContent = `<${b.tagName}> (${b.wordCount} words)`;
+        const chunkSuffix = (b.totalChunks && b.totalChunks > 1) ? ` [part ${b.chunkIndex + 1}/${b.totalChunks}]` : '';
+        tag.textContent = `<${b.tagName}> (${b.wordCount} words)${chunkSuffix}`;
 
         const scorePill = document.createElement('span');
         scorePill.className = `block-score ${b.classification}`;
@@ -222,17 +288,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const signals = document.createElement('p');
         signals.className = 'block-signals';
-        signals.textContent = b.signals.length > 0 ? `Signals: ${b.signals.join(' • ')}` : '';
+        signals.textContent = b.signals && b.signals.length > 0 ? `Signals: ${b.signals.join(' • ')}` : '';
 
         item.appendChild(header);
         item.appendChild(snippet);
-        if (b.signals.length > 0) item.appendChild(signals);
+        if (b.signals && b.signals.length > 0) item.appendChild(signals);
 
         // Click to scroll
         item.addEventListener('click', () => {
           _browser.tabs.sendMessage(currentTabId, {
             action: 'SCROLL_TO_BLOCK',
-            blockId: b.id
+            blockId: b.elementId || b.id
           });
         });
 
@@ -269,7 +335,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView(errorView);
   }
 
-  // Event Listeners
+  // Event Listeners - Settings
+  settingsBtn.addEventListener('click', () => {
+    showView(settingsView);
+  });
+
+  closeSettingsBtn.addEventListener('click', () => {
+    showView(previousView || idleView);
+  });
+
+  toggleKeyVisibility.addEventListener('click', () => {
+    if (apiKeyInput.type === 'password') {
+      apiKeyInput.type = 'text';
+      toggleKeyVisibility.textContent = 'Hide';
+    } else {
+      apiKeyInput.type = 'password';
+      toggleKeyVisibility.textContent = 'Show';
+    }
+  });
+
+  saveSettingsBtn.addEventListener('click', async () => {
+    const newKey = apiKeyInput.value.trim();
+
+    try {
+      if (_browser.storage && _browser.storage.local) {
+        await _browser.storage.local.set({ TYPESAFE_API_KEY: newKey });
+      }
+      if (typeof window !== 'undefined' && window.ENV) {
+        window.ENV.TYPESAFE_API_KEY = newKey;
+      }
+
+      await refreshEngineStatus();
+      saveSettingsBtn.textContent = 'Saved!';
+      setTimeout(() => {
+        saveSettingsBtn.textContent = 'Save Settings';
+        showView(previousView || idleView);
+      }, 700);
+    } catch (err) {
+      alert('Could not save settings: ' + err.message);
+    }
+  });
+
+  // Event Listeners - Main
   startScanBtn.addEventListener('click', runScan);
   rescanBtn.addEventListener('click', runScan);
 

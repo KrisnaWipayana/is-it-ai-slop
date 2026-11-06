@@ -1,0 +1,19 @@
+{
+  "name": "is-it-slop",
+  "version": "1.1.0",
+  "description": "Browser extension to detect AI-generated slop and low-quality machine content with TypeSafe AI JEV, ONNX, and Heuristics.",
+  "scripts": {
+    "sync-env": "node scripts/sync-env.js",
+    "test": "node test/test_suite.js"
+  },
+  "keywords": [
+    "ai-detector",
+    "browser-extension",
+    "typesafe-ai",
+    "jev",
+    "slop-detector",
+    "onnx"
+  ],
+  "author": "",
+  "license": "MIT"
+}

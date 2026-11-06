@@ -14,11 +14,49 @@
         <span class="logo-icon"></span>
         <h1 class="logo-title">Is It AI Slop?</h1>
       </div>
-      <span id="domainBadge" class="domain-badge" title="Active Page">Detecting...</span>
+      <div class="header-right">
+        <span id="domainBadge" class="domain-badge" title="Active Page">Detecting...</span>
+        <button id="settingsBtn" class="icon-btn" title="Settings / API Key" aria-label="Settings">⚙</button>
+      </div>
     </header>
 
     <!-- Main Content Area -->
     <main class="content">
+
+      <!-- Settings View -->
+      <section id="settingsView" class="view hidden">
+        <div class="settings-card">
+          <div class="settings-header">
+            <h2 class="settings-title">AI Engine Settings</h2>
+            <button id="closeSettingsBtn" class="close-btn" title="Close Settings">✕</button>
+          </div>
+
+          <p class="settings-intro">
+            Connect to <strong>TypeSafe AI JEV</strong> (System One decision model) or use local fallback models.
+          </p>
+
+          <div class="form-group">
+            <label for="apiKeyInput" class="form-label">TypeSafe AI API Key</label>
+            <div class="input-row">
+              <input type="password" id="apiKeyInput" class="form-input" placeholder="Paste your API key here..." autocomplete="off">
+              <button id="toggleKeyVisibility" class="secondary-btn small-btn" type="button">Show</button>
+            </div>
+            <span class="form-help">Configurable via <code>.env</code>, <code>env.js</code>, or saved securely here in browser storage.</span>
+          </div>
+
+          <div class="engine-status-box">
+            <div class="status-indicator-dot" id="engineStatusDot"></div>
+            <div class="status-info">
+              <span class="status-name" id="currentEngineName">TypeSafe AI JEV</span>
+              <span class="status-detail" id="currentEngineDetail">Ready for fast System One decision evaluation</span>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button id="saveSettingsBtn" class="primary-btn">Save Settings</button>
+          </div>
+        </div>
+      </section>
 
       <!-- Idle / Ready View -->
       <section id="idleView" class="view">
@@ -40,7 +78,7 @@
         <div class="loading-container">
           <div class="spinner"></div>
           <p class="loading-title">Analyzing elements...</p>
-          <p class="loading-subtitle">Extracting readable content and evaluating signals</p>
+          <p class="loading-subtitle" id="scanSubText">Extracting readable content and evaluating signals</p>
         </div>
       </section>
 
@@ -62,7 +100,7 @@
           <div class="verdict-container">
             <div class="verdict-header-row">
               <span id="verdictBadge" class="verdict-badge clean">Likely Human</span>
-              <span id="engineBadge" class="engine-badge">XGBoost ONNX</span>
+              <span id="engineBadge" class="engine-badge">TypeSafe AI JEV</span>
             </div>
             <p id="verdictDesc" class="verdict-desc">Content appears natural with low AI markers.</p>
           </div>
@@ -131,6 +169,7 @@
     </main>
   </div>
 
+  <script src="env.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
