@@ -28,8 +28,9 @@ flowchart TD
    - Requires setting `TYPESAFE_API_KEY` via `.env`, `extension/env.js`, or the extension popup settings.
 
 2. **Mode 2: Bring-Your-Own-Model (BYOM) In-Browser ML**:
-   - Run custom trained models (XGBoost, LightGBM, CatBoost) locally inside the browser via ONNX Runtime Web.
+   - Run custom trained models (XGBoost, LightGBM, CatBoost) locally inside the extension via ONNX Runtime Web in the background service worker.
    - Evaluates an 11-dimensional stylometric feature vector in `< 0.2ms` without sending text outside the browser.
+   - Fully isolated from webpage Content Security Policies (CSPs), guaranteeing execution across all websites (including GitHub, Medium, Twitter/X).
    - Active when `models/ai-slop_model.onnx` is present and JEV is not configured.
 
 3. **Mode 3: Zero-Dependency Heuristic Engine (Out-of-the-Box)**:
@@ -118,11 +119,15 @@ To prevent sending excessively large text blocks in a single call to JEV (which 
    - Each chunk retains a reference to its parent DOM element (`elementId`).
    - If any chunk in a long article section is classified as slop, the parent element on the page is highlighted with the maximum score from its chunks, and clicking a flagged snippet in the popup scrolls directly to that section.
 
-### 4. Browser Security & Background Dispatch
+### 4. Browser Security & Background Dispatch (CSP Immunity)
 
-In Chromium and Firefox extensions (Manifest V3), webpage Content Security Policies (CSP) frequently block client-side scripts from making external `fetch()` calls. 
+In Chromium and Firefox extensions (Manifest V3), webpage Content Security Policies (CSP) frequently block client-side scripts from making external `fetch()` calls or compiling WebAssembly modules on hardened sites (such as GitHub, Twitter/X, Medium, and banking portals).
 
-To overcome this, **Is It AI Slop?** dispatches JEV requests through [`extension/scripts/background.js`](./extension/scripts/background.js) (the background service worker). With `"host_permissions": ["https://api.typesafe.ai/*"]`, calls execute in the extension's privileged context, guaranteeing reliability on any website (Wikipedia, Medium, news portals, etc.).
+To overcome this, **Is It AI Slop?** routes both cloud and local ML tasks through [`extension/scripts/background.js`](./extension/scripts/background.js) (the background service worker):
+
+1. **Cloud JEV API Dispatch**: With `"host_permissions": ["https://api.typesafe.ai/*"]`, calls execute in the extension's privileged context, bypassing webpage CORS and CSP `connect-src` restrictions.
+2. **Local ONNX WebAssembly Execution**: The ONNX runtime executes in the background worker under the extension's dedicated CSP (`script-src 'self' 'wasm-unsafe-eval'`). Webpage CSP directives (such as GitHub omitting `'wasm-unsafe-eval'`) cannot block the model from running.
+3. **Stream-Compile Optimization**: The background worker pre-fetches `.wasm` binaries into `ort.env.wasm.wasmBinary`, eliminating browser extension MIME-type `CompileError` issues from `WebAssembly.instantiateStreaming`.
 
 ---
 
@@ -244,7 +249,7 @@ is-it-slop/
 │   ├── scripts/
 │   │   ├── extractor.js         # Intelligent DOM prose extraction & text chunking filter
 │   │   ├── analyzer.js          # Multi-engine: TypeSafe AI JEV, ONNX ML & Heuristics
-│   │   ├── background.js        # Background service worker for secure API calls
+│   │   ├── background.js        # Background service worker for secure API calls & ONNX WASM execution
 │   │   └── content.js           # Content coordinator & in-page visual highlighter
 │   │
 │   ├── models/                  # Custom ONNX models (optional)
@@ -278,4 +283,4 @@ is-it-slop/
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE) — free for personal, educational, and commercial open-source use.
+This project is licensed under the [MIT License](LICENSE). Free for personal, educational, and commercial open-source use.
