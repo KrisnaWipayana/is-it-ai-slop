@@ -151,7 +151,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         target: { tabId: currentTabId },
         files: [
           'env.js',
-          'lib/onnxruntime/ort.min.js',
           'scripts/extractor.js',
           'scripts/analyzer.js',
           'scripts/content.js'

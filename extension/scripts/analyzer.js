@@ -70,7 +70,7 @@
 
       // 2. Try window.ENV or globalThis.ENV
       const envObj = (typeof window !== 'undefined' ? window.ENV : null) ||
-                     (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
+        (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
       if (envObj) {
         if (envObj.TYPESAFE_API_KEY && envObj.TYPESAFE_API_KEY.trim()) {
           this.apiKey = envObj.TYPESAFE_API_KEY.trim();
@@ -82,9 +82,7 @@
       return this.apiKey;
     }
 
-    /**
-     * Initializes all available engines (JEV, ONNX, Heuristics)
-     */
+    // Initializes all available engines (JEV, ONNX, Heuristics)
     async ensureEnginesReady() {
       await this.resolveApiKey();
       this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
@@ -93,40 +91,64 @@
       await this.ensureModelLoaded();
     }
 
-    /**
-     * Initializes in-browser ONNX runtime session with ai-slop_model.onnx
-     */
+    // Initializes ONNX runtime session (prefers background service worker to bypass page CSP)
     async ensureModelLoaded() {
-      if (this.modelSession) return;
+      if (this.useOnnx) return;
       if (this.modelLoadingPromise) return this.modelLoadingPromise;
 
       this.modelLoadingPromise = (async () => {
-        if (typeof ort === 'undefined') {
-          return;
+        const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
+
+        if (_runtime && _runtime.runtime && _runtime.runtime.sendMessage) {
+          try {
+            const res = await new Promise(resolve => {
+              _runtime.runtime.sendMessage({ action: 'PING_ONNX' }, resolve);
+            });
+            if (res && res.success && res.ready) {
+              this.useOnnx = true;
+              console.log('[Is It AI Slop?] Connected to background ONNX XGBoost engine.');
+              return;
+            }
+          } catch (_) {
+            // Background unreachable or failed
+          }
         }
 
-        try {
-          const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
-          if (_runtime && _runtime.runtime && _runtime.runtime.getURL) {
-            if (ort.env && ort.env.wasm) {
-              ort.env.wasm.wasmPaths = _runtime.runtime.getURL('lib/onnxruntime/');
-              ort.env.wasm.numThreads = 1;
-            }
+        if (typeof ort !== 'undefined') {
+          try {
+            if (_runtime && _runtime.runtime && _runtime.runtime.getURL) {
+              if (ort.env && ort.env.wasm) {
+                ort.env.wasm.wasmPaths = _runtime.runtime.getURL('lib/onnxruntime/');
+                ort.env.wasm.numThreads = 1;
 
-            const modelUrl = _runtime.runtime.getURL('models/ai-slop_model.onnx');
-            const res = await fetch(modelUrl);
-            if (res.ok) {
-              const buffer = await res.arrayBuffer();
-              this.modelSession = await ort.InferenceSession.create(buffer, {
-                executionProviders: ['wasm']
-              });
-              this.useOnnx = true;
-              console.log('[Is It AI Slop?] ONNX XGBoost model initialized.');
+                try {
+                  const hasSimd = typeof WebAssembly === 'object' &&
+                    typeof WebAssembly.validate === 'function' &&
+                    WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 26, 11]));
+                  const wasmFileName = hasSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
+                  const wasmUrl = _runtime.runtime.getURL(`lib/onnxruntime/${wasmFileName}`);
+                  const wasmRes = await fetch(wasmUrl);
+                  if (wasmRes.ok) {
+                    ort.env.wasm.wasmBinary = await wasmRes.arrayBuffer();
+                  }
+                } catch (_) { }
+              }
+
+              const modelUrl = _runtime.runtime.getURL('models/ai-slop_model.onnx');
+              const res = await fetch(modelUrl);
+              if (res.ok) {
+                const buffer = await res.arrayBuffer();
+                this.modelSession = await ort.InferenceSession.create(buffer, {
+                  executionProviders: ['wasm']
+                });
+                this.useOnnx = true;
+                console.log('[Is It AI Slop?] In-page ONNX XGBoost model initialized.');
+              }
             }
+          } catch (err) {
+            console.warn('[Is It AI Slop?] ONNX initialization note, falling back to heuristics:', err);
+            this.useOnnx = false;
           }
-        } catch (err) {
-          console.warn('[Is It AI Slop?] ONNX initialization note, falling back to heuristics:', err);
-          this.useOnnx = false;
         }
       })();
 
@@ -244,9 +266,7 @@
       }
     }
 
-    /**
-     * Extracts and scales the 11 numerical features for XGBoost
-     */
+    // Extracts and scales the 11 numerical features for XGBoost
     extractFeatures(text) {
       text = (text || '').trim();
       const words = text.match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu) || [];
@@ -343,35 +363,54 @@
       };
     }
 
-    /**
-     * Executes XGBoost inference on the scaled 11-feature tensor
-     */
+    // Executes XGBoost inference on the scaled 11-feature tensor
     async predictWithOnnx(featureVector) {
-      if (!this.modelSession) return null;
+      const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
 
-      try {
-        const inputTensor = new ort.Tensor('float32', new Float32Array(featureVector), [1, 11]);
-        const feeds = { float_input: inputTensor };
-        const results = await this.modelSession.run(feeds);
+      if (_runtime && _runtime.runtime && _runtime.runtime.sendMessage) {
+        try {
+          const response = await new Promise(resolve => {
+            _runtime.runtime.sendMessage({
+              action: 'RUN_ONNX_INFERENCE',
+              featureVector
+            }, (res) => {
+              if (_runtime.runtime.lastError) {
+                resolve(null);
+              } else {
+                resolve(res);
+              }
+            });
+          });
 
-        if (results && results.probabilities && results.probabilities.data) {
-          const probSlop = results.probabilities.data[1];
-          return Math.min(Math.max(Math.round(probSlop * 100), 0), 100);
+          if (response && response.success && typeof response.score === 'number') {
+            return response.score;
+          }
+        } catch (_) { }
+      }
+
+      if (this.modelSession && typeof ort !== 'undefined') {
+        try {
+          const inputTensor = new ort.Tensor('float32', new Float32Array(featureVector), [1, 11]);
+          const feeds = { float_input: inputTensor };
+          const results = await this.modelSession.run(feeds);
+
+          if (results && results.probabilities && results.probabilities.data) {
+            const probSlop = results.probabilities.data[1];
+            return Math.min(Math.max(Math.round(probSlop * 100), 0), 100);
+          }
+
+          if (results && results.label && results.label.data) {
+            const label = Number(results.label.data[0]);
+            return label === 1 ? 80 : 15;
+          }
+        } catch (err) {
+          console.warn('[Is It AI Slop?] Local ONNX inference warning:', err);
         }
-
-        if (results && results.label && results.label.data) {
-          const label = Number(results.label.data[0]);
-          return label === 1 ? 80 : 15;
-        }
-      } catch (err) {
-        console.warn('[Is It AI Slop?] ONNX inference warning:', err);
       }
       return null;
     }
 
-    /**
-     * Calibrates ML score with linguistic ground-truth validation
-     */
+    // Calibrates ML score with linguistic ground-truth validation
     calibrateBlockScore(mlScore, extracted) {
       const { clicheHits, transitionRatio, ttr } = extracted;
 
@@ -392,9 +431,7 @@
       return heuristicScore;
     }
 
-    /**
-     * Pure heuristic scoring fallback
-     */
+    // Pure heuristic scoring fallback
     computeHeuristicScore(extracted) {
       const { wordCount, clicheHits, transitionRatio, ttr, featureVector } = extracted;
       if (wordCount < 12) return 0;
@@ -412,9 +449,7 @@
       return Math.min(Math.max(Math.round(rawScore), 0), 100);
     }
 
-    /**
-     * Concurrency runner helper for pooled asynchronous execution
-     */
+    // Concurrency runner helper for pooled asynchronous execution
     async mapConcurrent(items, limit, asyncFn) {
       const results = new Array(items.length);
       let index = 0;
@@ -429,9 +464,7 @@
       return results;
     }
 
-    /**
-     * Analyzes an array of extracted text blocks (or chunked blocks)
-     */
+    // Analyzes an array of extracted text blocks (or chunked blocks)
     async analyze(blocks) {
       await this.ensureEnginesReady();
 

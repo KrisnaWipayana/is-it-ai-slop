@@ -17,6 +17,10 @@
     "storage"
   ],
 
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+
   "host_permissions": [
     "https://api.typesafe.ai/*"
   ],
@@ -46,7 +50,6 @@
       "matches": ["<all_urls>"],
       "js": [
         "env.js",
-        "lib/onnxruntime/ort.min.js",
         "scripts/extractor.js",
         "scripts/analyzer.js",
         "scripts/content.js"
