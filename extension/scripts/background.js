@@ -5,9 +5,11 @@
  * Bypasses webpage Content Security Policy (CSP) and CORS restrictions.
  */
 
-// Import ONNX Runtime into service worker scope
+// Import ONNX Runtime into service worker scope (Chromium service workers)
 try {
-  importScripts('../lib/onnxruntime/ort.min.js');
+  if (typeof importScripts === 'function') {
+    importScripts('../lib/onnxruntime/ort.min.js');
+  }
 } catch (e) {
   console.warn('[Is It AI Slop?] Could not import ort.min.js in background:', e);
 }

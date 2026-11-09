@@ -26,6 +26,10 @@
   ],
 
   "background": {
+    "scripts": [
+      "lib/onnxruntime/ort.min.js",
+      "scripts/background.js"
+    ],
     "service_worker": "scripts/background.js"
   },
 
