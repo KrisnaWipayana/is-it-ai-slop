@@ -84,12 +84,12 @@
   }
 
   // Scans current page DOM and computes scores
-  async function performScan() {
+  async function performScan(options = {}) {
     const wasHighlighted = highlightsActive;
     clearHighlights();
 
     const blocks = extractor.extract();
-    const result = await analyzer.analyze(blocks);
+    const result = await analyzer.analyze(blocks, options);
 
     currentAnalysis = {
       ...result,
@@ -190,7 +190,7 @@
 
     switch (message.action) {
       case 'SCAN_PAGE':
-        performScan()
+        performScan(message.options || (message.model ? { selectedModel: message.model } : {}))
           .then(data => sendResponse({ success: true, data }))
           .catch(err => sendResponse({ success: false, error: err.message || String(err) }));
       return true; // Keep channel open for async response

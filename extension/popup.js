@@ -1,7 +1,8 @@
 /**
  * Is It AI Slop? - Popup Controller
- * Coordinates scanning requests, renders minimalist dashboard visualizer,
- * manages TypeSafe AI JEV settings, and controls page highlighting interactions.
+ * Coordinates scanning requests, renders white/navy/orange visualizer,
+ * manages model selection toggle buttons (TypeSafe JEV, Local ONNX, Heuristics, Auto),
+ * and controls page highlighting interactions.
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -22,13 +23,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const errorTitle = document.getElementById('errorTitle');
   const errorMessage = document.getElementById('errorMessage');
 
-  // DOM Elements - Settings
+  // DOM Elements - Settings & Models
   const apiKeyInput = document.getElementById('apiKeyInput');
   const toggleKeyVisibility = document.getElementById('toggleKeyVisibility');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const engineStatusDot = document.getElementById('engineStatusDot');
   const currentEngineName = document.getElementById('currentEngineName');
   const currentEngineDetail = document.getElementById('currentEngineDetail');
+
+  const modelToggleBtns = document.querySelectorAll('.model-toggle-btn');
+  const segmentedBtns = document.querySelectorAll('.segmented-btn');
+  const modelHelpText = document.getElementById('modelHelpText');
+  const activeModelTag = document.getElementById('activeModelTag');
+  const apiKeyRequiredHint = document.getElementById('apiKeyRequiredHint');
 
   // DOM Elements - Main Controls
   const startScanBtn = document.getElementById('startScanBtn');
@@ -53,13 +60,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   const flaggedCountBadge = document.getElementById('flaggedCountBadge');
   const flaggedList = document.getElementById('flaggedList');
 
+  // Model Descriptions and Labels
+  const MODEL_METADATA = {
+    jev: {
+      label: 'TypeSafe JEV',
+      helpText: 'TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.',
+      hint: '(Required for JEV)'
+    },
+    onnx: {
+      label: 'Local ONNX',
+      helpText: 'Local ONNX: In-browser XGBoost ML running via WebAssembly. Zero cloud calls, 100% private.',
+      hint: '(Not needed for ONNX)'
+    },
+    heuristic: {
+      label: 'Heuristic',
+      helpText: 'Linguistic Heuristics: Fast rule-based engine detecting clichés, cadence monotony, and lexical diversity.',
+      hint: '(Not needed for Heuristics)'
+    },
+    auto: {
+      label: 'Auto',
+      helpText: 'Auto: Automatically uses TypeSafe JEV if API key is present, otherwise falls back to ONNX and Heuristics.',
+      hint: '(Optional - enables JEV)'
+    }
+  };
+
+  let selectedModel = 'jev';
+  let currentTabId = null;
+  let previousView = idleView;
+
   // Gauge constants
   const CIRCUMFERENCE = 2 * Math.PI * 50;
   gaugeProgress.style.strokeDasharray = `${CIRCUMFERENCE}`;
   gaugeProgress.style.strokeDashoffset = `${CIRCUMFERENCE}`;
-
-  let currentTabId = null;
-  let previousView = idleView;
 
   // View state helper
   function showView(view) {
@@ -74,16 +106,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     view.classList.remove('hidden');
   }
 
+  // Updates active model state across both settings toggle and idle quick selector
+  async function setModel(model, persist = true) {
+    if (!MODEL_METADATA[model]) model = 'auto';
+    selectedModel = model;
+
+    // Update settings buttons
+    modelToggleBtns.forEach(btn => {
+      const match = btn.getAttribute('data-model') === model;
+      btn.classList.toggle('active', match);
+      btn.setAttribute('aria-checked', match ? 'true' : 'false');
+    });
+
+    // Update idle view segmented buttons
+    segmentedBtns.forEach(btn => {
+      const match = btn.getAttribute('data-model') === model;
+      btn.classList.toggle('active', match);
+    });
+
+    const meta = MODEL_METADATA[model];
+    if (activeModelTag) activeModelTag.textContent = meta.label;
+    if (modelHelpText) modelHelpText.textContent = meta.helpText;
+    if (apiKeyRequiredHint) apiKeyRequiredHint.textContent = meta.hint;
+
+    if (persist) {
+      try {
+        if (_browser.storage && _browser.storage.local) {
+          await _browser.storage.local.set({ SELECTED_MODEL: model });
+        }
+        if (typeof window !== 'undefined' && window.ENV) {
+          window.ENV.SELECTED_MODEL = model;
+        }
+      } catch (_) {}
+    }
+
+    await refreshEngineStatus();
+  }
+
   // Load and refresh engine status in settings
   async function refreshEngineStatus() {
     let activeKey = '';
 
-    // Check storage first
+    // Check storage for key and selected model
     try {
       if (_browser.storage && _browser.storage.local) {
-        const stored = await _browser.storage.local.get(['TYPESAFE_API_KEY']);
-        if (stored && stored.TYPESAFE_API_KEY) {
-          activeKey = stored.TYPESAFE_API_KEY.trim();
+        const stored = await _browser.storage.local.get(['TYPESAFE_API_KEY', 'SELECTED_MODEL']);
+        if (stored) {
+          if (stored.TYPESAFE_API_KEY) activeKey = stored.TYPESAFE_API_KEY.trim();
+          if (stored.SELECTED_MODEL && MODEL_METADATA[stored.SELECTED_MODEL]) {
+            selectedModel = stored.SELECTED_MODEL;
+          }
         }
       }
     } catch (_) {
@@ -94,25 +166,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!activeKey && typeof window !== 'undefined' && window.ENV && window.ENV.TYPESAFE_API_KEY) {
       activeKey = window.ENV.TYPESAFE_API_KEY.trim();
     }
+    if (typeof window !== 'undefined' && window.ENV && window.ENV.SELECTED_MODEL && MODEL_METADATA[window.ENV.SELECTED_MODEL]) {
+      selectedModel = window.ENV.SELECTED_MODEL;
+    }
 
     if (apiKeyInput) {
       apiKeyInput.value = activeKey;
     }
 
-    if (activeKey) {
-      engineStatusDot.classList.remove('inactive');
-      currentEngineName.textContent = 'TypeSafe AI JEV (System One)';
-      currentEngineDetail.textContent = 'Active • Ultra-fast structured decisions & calibrated probabilities';
-      if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+    // Reflect status according to selected model
+    if (selectedModel === 'jev') {
+      if (activeKey) {
+        engineStatusDot.className = 'status-indicator-dot';
+        currentEngineName.textContent = 'TypeSafe AI JEV (System One)';
+        currentEngineDetail.textContent = 'Active • Ultra-fast structured decisions & calibrated probabilities';
+        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+      } else {
+        engineStatusDot.className = 'status-indicator-dot inactive';
+        currentEngineName.textContent = 'TypeSafe AI JEV (API Key Needed)';
+        currentEngineDetail.textContent = 'Please enter your TypeSafe AI API key below to activate JEV';
+        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+      }
+    } else if (selectedModel === 'onnx') {
+      engineStatusDot.className = 'status-indicator-dot';
+      currentEngineName.textContent = 'Local ONNX (In-Browser ML)';
+      currentEngineDetail.textContent = 'Active • XGBoost stylometric model running via WebAssembly';
+      if (engineBadge) engineBadge.textContent = 'Local ONNX';
+    } else if (selectedModel === 'heuristic') {
+      engineStatusDot.className = 'status-indicator-dot';
+      currentEngineName.textContent = 'Linguistic Heuristics (Local)';
+      currentEngineDetail.textContent = 'Active • 18+ calibrated clichés, cadence, and lexical metrics';
+      if (engineBadge) engineBadge.textContent = 'Heuristics';
     } else {
-      engineStatusDot.classList.add('inactive');
-      currentEngineName.textContent = 'Local Engine (ONNX / Heuristic)';
-      currentEngineDetail.textContent = 'Provide a TypeSafe AI API key to enable cloud System One evaluation';
-      if (engineBadge) engineBadge.textContent = 'Local Engine';
+      // Auto mode
+      if (activeKey) {
+        engineStatusDot.className = 'status-indicator-dot';
+        currentEngineName.textContent = 'Auto (TypeSafe JEV Active)';
+        currentEngineDetail.textContent = 'JEV active with local ONNX and heuristic fallback';
+        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+      } else {
+        engineStatusDot.className = 'status-indicator-dot';
+        currentEngineName.textContent = 'Auto (Local Engines Active)';
+        currentEngineDetail.textContent = 'Running local ONNX & heuristic engines (Set API key for JEV)';
+        if (engineBadge) engineBadge.textContent = 'Local Engine';
+      }
     }
   }
 
+  // Initialize stored model and engine status
+  try {
+    if (_browser.storage && _browser.storage.local) {
+      const stored = await _browser.storage.local.get(['SELECTED_MODEL']);
+      if (stored && stored.SELECTED_MODEL && MODEL_METADATA[stored.SELECTED_MODEL]) {
+        selectedModel = stored.SELECTED_MODEL;
+      }
+    }
+  } catch (_) {}
+
+  await setModel(selectedModel, false);
   await refreshEngineStatus();
+
+  // Attach toggle listeners for Settings model buttons
+  modelToggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const model = btn.getAttribute('data-model');
+      if (model) setModel(model, true);
+    });
+  });
+
+  // Attach toggle listeners for Idle view segmented buttons
+  segmentedBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const model = btn.getAttribute('data-model');
+      if (model) setModel(model, true);
+    });
+  });
 
   // Get active tab and verify support
   try {
@@ -187,7 +315,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await ensureScriptsInjected();
 
-      const response = await _browser.tabs.sendMessage(currentTabId, { action: 'SCAN_PAGE' });
+      const response = await _browser.tabs.sendMessage(currentTabId, {
+        action: 'SCAN_PAGE',
+        options: { selectedModel }
+      });
 
       if (!response || !response.success) {
         throw new Error(response ? response.error : 'Failed to communicate with page.');
@@ -211,18 +342,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     gaugeProgress.style.strokeDashoffset = offset;
 
     // Colors & Verdict
-    let colorVar = '#10b981';
+    let colorVar = '#059669'; // Clean emerald
     let verdictText = 'Likely Human';
     let descText = 'Content exhibits natural cadence, varied vocabulary, and low AI indicators.';
 
     verdictBadge.className = `verdict-badge ${classification}`;
 
     if (classification === 'slop') {
-      colorVar = '#ef4444';
+      colorVar = '#dc2626'; // Red
       verdictText = 'High AI Slop';
       descText = 'Dense presence of repetitive clichés, formulaic transitions, and robotic rhythm.';
     } else if (classification === 'suspicious') {
-      colorVar = '#f59e0b';
+      colorVar = '#d97706'; // Amber
       verdictText = 'Moderate Suspicion';
       descText = 'Multiple AI patterns or boilerplate phrases detected in several paragraphs.';
     }
@@ -334,7 +465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView(errorView);
   }
 
-  // Event Listeners - Settings
+  // Event Listeners - Settings Navigation
   settingsBtn.addEventListener('click', () => {
     showView(settingsView);
   });
@@ -358,10 +489,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       if (_browser.storage && _browser.storage.local) {
-        await _browser.storage.local.set({ TYPESAFE_API_KEY: newKey });
+        await _browser.storage.local.set({
+          TYPESAFE_API_KEY: newKey,
+          SELECTED_MODEL: selectedModel
+        });
       }
       if (typeof window !== 'undefined' && window.ENV) {
         window.ENV.TYPESAFE_API_KEY = newKey;
+        window.ENV.SELECTED_MODEL = selectedModel;
       }
 
       await refreshEngineStatus();

@@ -32,11 +32,46 @@
           </div>
 
           <p class="settings-intro">
-            Connect to <strong>TypeSafe AI JEV</strong> (System One decision model) or use local fallback models.
+            Choose your AI detection model or connect to <strong>TypeSafe AI JEV</strong> (System One decision model).
           </p>
 
           <div class="form-group">
-            <label for="apiKeyInput" class="form-label">TypeSafe AI API Key</label>
+            <label class="form-label">Evaluation Model</label>
+            <div class="model-toggle-group" id="modelToggleGroup" role="radiogroup" aria-label="Model Selection">
+              <button type="button" class="model-toggle-btn active" data-model="jev" role="radio" aria-checked="true" title="TypeSafe AI JEV Cloud Engine">
+                <div class="model-btn-top">
+                  <span class="model-btn-name">TypeSafe JEV</span>
+                  <span class="model-btn-badge">Cloud</span>
+                </div>
+                <span class="model-btn-desc">System One decision model</span>
+              </button>
+              <button type="button" class="model-toggle-btn" data-model="onnx" role="radio" aria-checked="false" title="Local In-Browser ONNX Machine Learning">
+                <div class="model-btn-top">
+                  <span class="model-btn-name">Local ONNX</span>
+                  <span class="model-btn-badge">ML</span>
+                </div>
+                <span class="model-btn-desc">In-browser XGBoost WASM</span>
+              </button>
+              <button type="button" class="model-toggle-btn" data-model="heuristic" role="radio" aria-checked="false" title="Zero-Dependency Linguistic Heuristics">
+                <div class="model-btn-top">
+                  <span class="model-btn-name">Heuristic</span>
+                  <span class="model-btn-badge">Rules</span>
+                </div>
+                <span class="model-btn-desc">18+ AI cliché patterns</span>
+              </button>
+              <button type="button" class="model-toggle-btn" data-model="auto" role="radio" aria-checked="false" title="Smart Automatic Selection">
+                <div class="model-btn-top">
+                  <span class="model-btn-name">Auto</span>
+                  <span class="model-btn-badge">Smart</span>
+                </div>
+                <span class="model-btn-desc">JEV → ONNX → Heuristics</span>
+              </button>
+            </div>
+            <p id="modelHelpText" class="model-help-text">TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.</p>
+          </div>
+
+          <div class="form-group" id="apiKeyFormGroup">
+            <label for="apiKeyInput" class="form-label">TypeSafe AI API Key <span id="apiKeyRequiredHint" class="label-hint">(Required for JEV)</span></label>
             <div class="input-row">
               <input type="password" id="apiKeyInput" class="form-input" placeholder="Paste your API key here..." autocomplete="off">
               <button id="toggleKeyVisibility" class="secondary-btn small-btn" type="button">Show</button>
@@ -67,6 +102,21 @@
           </div>
           <p class="idle-title">Detect AI Slop</p>
           <p class="idle-subtitle">Scan webpage text elements to identify boilerplate, clichés, and machine-generated content.</p>
+
+          <!-- Quick Model Toggle -->
+          <div class="idle-model-selector">
+            <div class="idle-model-header">
+              <span class="idle-model-label">Model</span>
+              <span id="activeModelTag" class="active-model-tag">TypeSafe JEV</span>
+            </div>
+            <div class="model-segmented-control" id="idleModelSelector" role="radiogroup" aria-label="Quick Model Select">
+              <button type="button" class="segmented-btn active" data-model="jev" title="TypeSafe AI JEV (Cloud)">JEV</button>
+              <button type="button" class="segmented-btn" data-model="onnx" title="Local ONNX (In-Browser ML)">ONNX</button>
+              <button type="button" class="segmented-btn" data-model="heuristic" title="Linguistic Heuristics (Local)">Rules</button>
+              <button type="button" class="segmented-btn" data-model="auto" title="Automatic Engine Fallback">Auto</button>
+            </div>
+          </div>
+
           <button id="startScanBtn" class="primary-btn">
             <span>Scan Page</span>
           </button>

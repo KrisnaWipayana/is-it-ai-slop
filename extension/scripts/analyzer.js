@@ -40,12 +40,41 @@
       this.useOnnx = false;
       this.useJev = false;
       this.modelLoadingPromise = null;
+      this.selectedModel = options.selectedModel || 'auto'; // 'jev' | 'onnx' | 'heuristic' | 'auto'
 
       // TypeSafe AI JEV configuration
       this.apiKey = options.apiKey || '';
       this.jevApiUrl = options.jevApiUrl || 'https://api.typesafe.ai/v1/systemone';
       this.jevModel = options.jevModel || 'jev-latest';
       this.maxConcurrency = options.maxConcurrency || 3;
+    }
+
+    /**
+     * Resolves the selected model from storage or ENV
+     */
+    async resolveSelectedModel() {
+      if (this.selectedModel && this.selectedModel !== 'auto') {
+        return this.selectedModel;
+      }
+
+      try {
+        const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
+        if (_runtime && _runtime.storage && _runtime.storage.local) {
+          const res = await _runtime.storage.local.get(['SELECTED_MODEL']);
+          if (res && res.SELECTED_MODEL) {
+            this.selectedModel = res.SELECTED_MODEL;
+            return this.selectedModel;
+          }
+        }
+      } catch (_) {}
+
+      const envObj = (typeof window !== 'undefined' ? window.ENV : null) ||
+        (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
+      if (envObj && envObj.SELECTED_MODEL) {
+        this.selectedModel = envObj.SELECTED_MODEL;
+      }
+
+      return this.selectedModel || 'auto';
     }
 
     /**
@@ -82,12 +111,36 @@
       return this.apiKey;
     }
 
-    // Initializes all available engines (JEV, ONNX, Heuristics)
-    async ensureEnginesReady() {
-      await this.resolveApiKey();
-      this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
+    // Initializes engines based on selected model
+    async ensureEnginesReady(options = {}) {
+      if (options.selectedModel) {
+        this.selectedModel = options.selectedModel;
+      } else {
+        await this.resolveSelectedModel();
+      }
 
-      // Also initialize local ONNX as fallback/companion
+      await this.resolveApiKey();
+
+      if (this.selectedModel === 'heuristic') {
+        this.useJev = false;
+        this.useOnnx = false;
+        return;
+      }
+
+      if (this.selectedModel === 'onnx') {
+        this.useJev = false;
+        await this.ensureModelLoaded();
+        return;
+      }
+
+      if (this.selectedModel === 'jev') {
+        this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
+        this.useOnnx = false;
+        return;
+      }
+
+      // 'auto' mode: try JEV first, with ONNX as local fallback/companion
+      this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
       await this.ensureModelLoaded();
     }
 
@@ -465,14 +518,15 @@
     }
 
     // Analyzes an array of extracted text blocks (or chunked blocks)
-    async analyze(blocks) {
-      await this.ensureEnginesReady();
+    async analyze(blocks, options = {}) {
+      await this.ensureEnginesReady(options);
 
       const startTime = performance.now();
       let totalWords = 0;
       let totalWeightedScore = 0;
       const indicatorCounts = {};
       let usedJevCount = 0;
+      let usedOnnxCount = 0;
 
       // Analyze each block (chunk) concurrently with pooled calls
       const analyzedBlocks = await this.mapConcurrent(blocks, this.maxConcurrency, async (block) => {
@@ -498,6 +552,7 @@
           let rawMlScore = null;
           if (this.useOnnx) {
             rawMlScore = await this.predictWithOnnx(extracted.featureVector);
+            if (rawMlScore !== null) usedOnnxCount++;
           }
           finalScore = this.calibrateBlockScore(rawMlScore, extracted);
         }
@@ -537,17 +592,35 @@
       const durationMs = Math.round(performance.now() - startTime);
 
       // Determine active engine label
-      let engineName = 'Linguistic Engine';
-      if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
-        engineName = 'TypeSafe AI (JEV System One)';
-      } else if (this.useOnnx) {
-        engineName = 'XGBoost (Calibrated ONNX)';
+      let engineName = 'Linguistic Heuristics';
+      if (this.selectedModel === 'heuristic') {
+        engineName = 'Linguistic Heuristics';
+      } else if (this.selectedModel === 'onnx') {
+        engineName = 'Local ONNX (XGBoost ML)';
+      } else if (this.selectedModel === 'jev') {
+        if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
+          engineName = 'TypeSafe AI (JEV System One)';
+        } else if (this.apiKey) {
+          engineName = 'TypeSafe AI JEV (Fallback)';
+        } else {
+          engineName = 'TypeSafe JEV (Key Missing)';
+        }
+      } else {
+        // Auto mode
+        if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
+          engineName = 'TypeSafe AI (JEV System One)';
+        } else if (this.useOnnx && (usedOnnxCount > 0 || blocks.length === 0)) {
+          engineName = 'Local ONNX (XGBoost ML)';
+        } else {
+          engineName = 'Linguistic Heuristics';
+        }
       }
 
       return {
         overallScore,
         classification: this.getClassification(overallScore),
         modelEngine: engineName,
+        selectedModel: this.selectedModel,
         totalWords,
         totalBlocks: blocks.length,
         flaggedBlockCount: flaggedBlocks.length,
