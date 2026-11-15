@@ -67,11 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       helpText: 'TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.',
       hint: '(Required for JEV)'
     },
-    onnx: {
-      label: 'Local ONNX',
-      helpText: 'Local ONNX: In-browser XGBoost ML running via WebAssembly. Zero cloud calls, 100% private.',
-      hint: '(Not needed for ONNX)'
-    },
     heuristic: {
       label: 'Heuristic',
       helpText: 'Linguistic Heuristics: Fast rule-based engine detecting clichés, cadence monotony, and lexical diversity.',
@@ -79,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
     auto: {
       label: 'Auto',
-      helpText: 'Auto: Automatically uses TypeSafe JEV if API key is present, otherwise falls back to ONNX and Heuristics.',
+      helpText: 'Auto: Automatically uses TypeSafe JEV if API key is present, otherwise falls back to Heuristics.',
       hint: '(Optional - enables JEV)'
     }
   };
@@ -187,11 +182,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentEngineDetail.textContent = 'Please enter your TypeSafe AI API key below to activate JEV';
         if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
       }
-    } else if (selectedModel === 'onnx') {
-      engineStatusDot.className = 'status-indicator-dot';
-      currentEngineName.textContent = 'Local ONNX (In-Browser ML)';
-      currentEngineDetail.textContent = 'Active • XGBoost stylometric model running via WebAssembly';
-      if (engineBadge) engineBadge.textContent = 'Local ONNX';
     } else if (selectedModel === 'heuristic') {
       engineStatusDot.className = 'status-indicator-dot';
       currentEngineName.textContent = 'Linguistic Heuristics (Local)';
@@ -202,13 +192,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (activeKey) {
         engineStatusDot.className = 'status-indicator-dot';
         currentEngineName.textContent = 'Auto (TypeSafe JEV Active)';
-        currentEngineDetail.textContent = 'JEV active with local ONNX and heuristic fallback';
+        currentEngineDetail.textContent = 'JEV active with heuristic fallback';
         if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
       } else {
         engineStatusDot.className = 'status-indicator-dot';
-        currentEngineName.textContent = 'Auto (Local Engines Active)';
-        currentEngineDetail.textContent = 'Running local ONNX & heuristic engines (Set API key for JEV)';
-        if (engineBadge) engineBadge.textContent = 'Local Engine';
+        currentEngineName.textContent = 'Auto (Heuristic Engine Active)';
+        currentEngineDetail.textContent = 'Running heuristic engine (Set API key for JEV)';
+        if (engineBadge) engineBadge.textContent = 'Heuristics';
       }
     }
   }

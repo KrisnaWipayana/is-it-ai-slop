@@ -45,13 +45,6 @@
                 </div>
                 <span class="model-btn-desc">System One decision model</span>
               </button>
-              <button type="button" class="model-toggle-btn" data-model="onnx" role="radio" aria-checked="false" title="Local In-Browser ONNX Machine Learning">
-                <div class="model-btn-top">
-                  <span class="model-btn-name">Local ONNX</span>
-                  <span class="model-btn-badge">ML</span>
-                </div>
-                <span class="model-btn-desc">In-browser XGBoost WASM</span>
-              </button>
               <button type="button" class="model-toggle-btn" data-model="heuristic" role="radio" aria-checked="false" title="Zero-Dependency Linguistic Heuristics">
                 <div class="model-btn-top">
                   <span class="model-btn-name">Heuristic</span>
@@ -64,7 +57,7 @@
                   <span class="model-btn-name">Auto</span>
                   <span class="model-btn-badge">Smart</span>
                 </div>
-                <span class="model-btn-desc">JEV → ONNX → Heuristics</span>
+                <span class="model-btn-desc">JEV → Heuristics</span>
               </button>
             </div>
             <p id="modelHelpText" class="model-help-text">TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.</p>
@@ -111,7 +104,6 @@
             </div>
             <div class="model-segmented-control" id="idleModelSelector" role="radiogroup" aria-label="Quick Model Select">
               <button type="button" class="segmented-btn active" data-model="jev" title="TypeSafe AI JEV (Cloud)">JEV</button>
-              <button type="button" class="segmented-btn" data-model="onnx" title="Local ONNX (In-Browser ML)">ONNX</button>
               <button type="button" class="segmented-btn" data-model="heuristic" title="Linguistic Heuristics (Local)">Rules</button>
               <button type="button" class="segmented-btn" data-model="auto" title="Automatic Engine Fallback">Auto</button>
             </div>

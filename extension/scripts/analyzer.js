@@ -2,8 +2,7 @@
  * Is It AI Slop? - Text Analyzer
  * Multi-Engine Architecture:
  * 1. TypeSafe AI JEV Engine (Flagship System One decision model from TypeSafe AI)
- * 2. In-Browser ONNX Machine Learning (XGBoost / GBDT with 11 stylometric features)
- * 3. Zero-Dependency Linguistic Heuristic Engine (18+ calibrated patterns, cadence, TTR)
+ * 2. Zero-Dependency Linguistic Heuristic Engine (18+ calibrated patterns, cadence, TTR)
  */
 
 (function () {
@@ -36,11 +35,8 @@
 
   class SlopAnalyzer {
     constructor(options = {}) {
-      this.modelSession = null;
-      this.useOnnx = false;
       this.useJev = false;
-      this.modelLoadingPromise = null;
-      this.selectedModel = options.selectedModel || 'auto'; // 'jev' | 'onnx' | 'heuristic' | 'auto'
+      this.selectedModel = options.selectedModel || 'auto'; // 'jev' | 'heuristic' | 'auto'
 
       // TypeSafe AI JEV configuration
       this.apiKey = options.apiKey || '';
@@ -61,7 +57,7 @@
         const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
         if (_runtime && _runtime.storage && _runtime.storage.local) {
           const res = await _runtime.storage.local.get(['SELECTED_MODEL']);
-          if (res && res.SELECTED_MODEL) {
+          if (res && res.SELECTED_MODEL && res.SELECTED_MODEL !== 'onnx') {
             this.selectedModel = res.SELECTED_MODEL;
             return this.selectedModel;
           }
@@ -70,7 +66,7 @@
 
       const envObj = (typeof window !== 'undefined' ? window.ENV : null) ||
         (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
-      if (envObj && envObj.SELECTED_MODEL) {
+      if (envObj && envObj.SELECTED_MODEL && envObj.SELECTED_MODEL !== 'onnx') {
         this.selectedModel = envObj.SELECTED_MODEL;
       }
 
@@ -123,89 +119,16 @@
 
       if (this.selectedModel === 'heuristic') {
         this.useJev = false;
-        this.useOnnx = false;
-        return;
-      }
-
-      if (this.selectedModel === 'onnx') {
-        this.useJev = false;
-        await this.ensureModelLoaded();
         return;
       }
 
       if (this.selectedModel === 'jev') {
         this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
-        this.useOnnx = false;
         return;
       }
 
-      // 'auto' mode: try JEV first, with ONNX as local fallback/companion
+      // 'auto' mode: use JEV if key present, otherwise heuristics
       this.useJev = Boolean(this.apiKey && this.apiKey.length > 5);
-      await this.ensureModelLoaded();
-    }
-
-    // Initializes ONNX runtime session (prefers background service worker to bypass page CSP)
-    async ensureModelLoaded() {
-      if (this.useOnnx) return;
-      if (this.modelLoadingPromise) return this.modelLoadingPromise;
-
-      this.modelLoadingPromise = (async () => {
-        const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
-
-        if (_runtime && _runtime.runtime && _runtime.runtime.sendMessage) {
-          try {
-            const res = await new Promise(resolve => {
-              _runtime.runtime.sendMessage({ action: 'PING_ONNX' }, resolve);
-            });
-            if (res && res.success && res.ready) {
-              this.useOnnx = true;
-              console.log('[Is It AI Slop?] Connected to background ONNX XGBoost engine.');
-              return;
-            }
-          } catch (_) {
-            // Background unreachable or failed
-          }
-        }
-
-        if (typeof ort !== 'undefined') {
-          try {
-            if (_runtime && _runtime.runtime && _runtime.runtime.getURL) {
-              if (ort.env && ort.env.wasm) {
-                ort.env.wasm.wasmPaths = _runtime.runtime.getURL('lib/onnxruntime/');
-                ort.env.wasm.numThreads = 1;
-
-                try {
-                  const hasSimd = typeof WebAssembly === 'object' &&
-                    typeof WebAssembly.validate === 'function' &&
-                    WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 26, 11]));
-                  const wasmFileName = hasSimd ? 'ort-wasm-simd.wasm' : 'ort-wasm.wasm';
-                  const wasmUrl = _runtime.runtime.getURL(`lib/onnxruntime/${wasmFileName}`);
-                  const wasmRes = await fetch(wasmUrl);
-                  if (wasmRes.ok) {
-                    ort.env.wasm.wasmBinary = await wasmRes.arrayBuffer();
-                  }
-                } catch (_) { }
-              }
-
-              const modelUrl = _runtime.runtime.getURL('models/ai-slop_model.onnx');
-              const res = await fetch(modelUrl);
-              if (res.ok) {
-                const buffer = await res.arrayBuffer();
-                this.modelSession = await ort.InferenceSession.create(buffer, {
-                  executionProviders: ['wasm']
-                });
-                this.useOnnx = true;
-                console.log('[Is It AI Slop?] In-page ONNX XGBoost model initialized.');
-              }
-            }
-          } catch (err) {
-            console.warn('[Is It AI Slop?] ONNX initialization note, falling back to heuristics:', err);
-            this.useOnnx = false;
-          }
-        }
-      })();
-
-      await this.modelLoadingPromise;
     }
 
     /**
@@ -526,7 +449,6 @@
       let totalWeightedScore = 0;
       const indicatorCounts = {};
       let usedJevCount = 0;
-      let usedOnnxCount = 0;
 
       // Analyze each block (chunk) concurrently with pooled calls
       const analyzedBlocks = await this.mapConcurrent(blocks, this.maxConcurrency, async (block) => {
@@ -547,14 +469,9 @@
           }
         }
 
-        // If JEV was not active or call failed, fall back to local ONNX / Heuristic engine
+        // If JEV was not active or call failed, fall back to Heuristic engine
         if (!jevSuccess) {
-          let rawMlScore = null;
-          if (this.useOnnx) {
-            rawMlScore = await this.predictWithOnnx(extracted.featureVector);
-            if (rawMlScore !== null) usedOnnxCount++;
-          }
-          finalScore = this.calibrateBlockScore(rawMlScore, extracted);
+          finalScore = this.calibrateBlockScore(null, extracted);
         }
 
         return {
@@ -595,8 +512,6 @@
       let engineName = 'Linguistic Heuristics';
       if (this.selectedModel === 'heuristic') {
         engineName = 'Linguistic Heuristics';
-      } else if (this.selectedModel === 'onnx') {
-        engineName = 'Local ONNX (XGBoost ML)';
       } else if (this.selectedModel === 'jev') {
         if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
           engineName = 'TypeSafe AI (JEV System One)';
@@ -609,8 +524,6 @@
         // Auto mode
         if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
           engineName = 'TypeSafe AI (JEV System One)';
-        } else if (this.useOnnx && (usedOnnxCount > 0 || blocks.length === 0)) {
-          engineName = 'Local ONNX (XGBoost ML)';
         } else {
           engineName = 'Linguistic Heuristics';
         }
