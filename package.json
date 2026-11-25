@@ -4,7 +4,10 @@
   "description": "Browser extension to detect AI-generated slop and low-quality machine content with JEV (OpenRouter), ONNX, and Heuristics.",
   "scripts": {
     "sync-env": "node scripts/sync-env.js",
-    "test": "node test/test_suite.js"
+    "test": "node test/test_suite.js",
+    "build": "node scripts/build.js",
+    "build:chrome": "node scripts/build.js chrome",
+    "build:firefox": "node scripts/build.js firefox"
   },
   "keywords": [
     "ai-detector",
