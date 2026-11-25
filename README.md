@@ -125,10 +125,11 @@ No build tools or servers required.
    ```bash
    git clone https://github.com/your-username/is-it-slop.git
    ```
-2. Open Google Chrome and navigate to `chrome://extensions/`.
-3. Turn on the **Developer mode** toggle in the top-right corner.
-4. Click **Load unpacked** and select the [`extension/`](./extension) directory.
-5. Pin **Is It AI Slop?** to your toolbar and click **Scan Page** on any article or blog.
+2. Build the Chrome version: `npm run build:chrome` (Chrome rejects `background.scripts`, so the manifest is generated per browser).
+3. Open Google Chrome and navigate to `chrome://extensions/`.
+4. Turn on the **Developer mode** toggle in the top-right corner.
+5. Click **Load unpacked** and select the `dist/chrome` directory.
+6. Pin **Is It AI Slop?** to your toolbar and click **Scan Page** on any article or blog.
 
 ### Firefox
 
@@ -137,7 +138,7 @@ No build tools or servers required.
 1. Open Firefox and navigate to `about:debugging`.
 2. Click **This Firefox** in the left sidebar.
 3. Click **Load Temporary Add-on…**.
-4. Select [`extension/manifest.json`](./extension/manifest.json).
+4. Run `npm run build:firefox`, then select `dist/firefox/manifest.json`.
 5. Click **Scan Page** on any article.
 
 ---
