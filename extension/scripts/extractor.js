@@ -4,7 +4,7 @@
  * Strictly filters out addresses, phone numbers, navigation crumbs, boilerplate,
  * ads, copyright notices, and widget fragments.
  *
- * Implements chunked extraction for TypeSafe AI JEV:
+ * Implements chunked extraction for JEV (OpenRouter):
  * If a block contains too many words for a single call, it splits text cleanly
  * at paragraph breaks or period delimiters into multiple discrete calls.
  */

@@ -1,7 +1,7 @@
 /**
  * Is It AI Slop? - Popup Controller
  * Coordinates scanning requests, renders white/navy/orange visualizer,
- * manages model selection toggle buttons (TypeSafe JEV, Local ONNX, Heuristics, Auto),
+ * manages model selection toggle buttons (JEV, Local ONNX, Heuristics, Auto),
  * and controls page highlighting interactions.
  */
 
@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // DOM Elements - Settings & Models
   const apiKeyInput = document.getElementById('apiKeyInput');
+  const jevModelInput = document.getElementById('jevModelInput');
   const toggleKeyVisibility = document.getElementById('toggleKeyVisibility');
   const saveSettingsBtn = document.getElementById('saveSettingsBtn');
   const engineStatusDot = document.getElementById('engineStatusDot');
@@ -63,8 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Model Descriptions and Labels
   const MODEL_METADATA = {
     jev: {
-      label: 'TypeSafe JEV',
-      helpText: 'TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.',
+      label: 'JEV',
+      helpText: 'JEV via OpenRouter: cloud model scoring how likely the text is AI-generated.',
       hint: '(Required for JEV)'
     },
     heuristic: {
@@ -74,7 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
     auto: {
       label: 'Auto',
-      helpText: 'Auto: Automatically uses TypeSafe JEV if API key is present, otherwise falls back to Heuristics.',
+      helpText: 'Auto: Automatically uses JEV if API key is present, otherwise falls back to Heuristics.',
       hint: '(Optional - enables JEV)'
     }
   };
@@ -141,13 +142,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load and refresh engine status in settings
   async function refreshEngineStatus() {
     let activeKey = '';
+    let jevModelValue = '';
 
     // Check storage for key and selected model
     try {
       if (_browser.storage && _browser.storage.local) {
-        const stored = await _browser.storage.local.get(['TYPESAFE_API_KEY', 'SELECTED_MODEL']);
+        const stored = await _browser.storage.local.get(['OPENROUTER_API_KEY', 'SELECTED_MODEL', 'JEV_MODEL']);
         if (stored) {
-          if (stored.TYPESAFE_API_KEY) activeKey = stored.TYPESAFE_API_KEY.trim();
+          if (stored.JEV_MODEL) jevModelValue = stored.JEV_MODEL.trim();
+          if (stored.OPENROUTER_API_KEY) activeKey = stored.OPENROUTER_API_KEY.trim();
           if (stored.SELECTED_MODEL && MODEL_METADATA[stored.SELECTED_MODEL]) {
             selectedModel = stored.SELECTED_MODEL;
           }
@@ -158,8 +161,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Fall back to window.ENV
-    if (!activeKey && typeof window !== 'undefined' && window.ENV && window.ENV.TYPESAFE_API_KEY) {
-      activeKey = window.ENV.TYPESAFE_API_KEY.trim();
+    if (!activeKey && typeof window !== 'undefined' && window.ENV && window.ENV.OPENROUTER_API_KEY) {
+      activeKey = window.ENV.OPENROUTER_API_KEY.trim();
     }
     if (typeof window !== 'undefined' && window.ENV && window.ENV.SELECTED_MODEL && MODEL_METADATA[window.ENV.SELECTED_MODEL]) {
       selectedModel = window.ENV.SELECTED_MODEL;
@@ -168,19 +171,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (apiKeyInput) {
       apiKeyInput.value = activeKey;
     }
+    if (jevModelInput) {
+      jevModelInput.value = jevModelValue || (window.ENV && window.ENV.JEV_MODEL) || '';
+    }
 
     // Reflect status according to selected model
     if (selectedModel === 'jev') {
       if (activeKey) {
         engineStatusDot.className = 'status-indicator-dot';
-        currentEngineName.textContent = 'TypeSafe AI JEV (System One)';
+        currentEngineName.textContent = 'JEV (OpenRouter)';
         currentEngineDetail.textContent = 'Active • Ultra-fast structured decisions & calibrated probabilities';
-        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+        if (engineBadge) engineBadge.textContent = 'JEV (OpenRouter)';
       } else {
         engineStatusDot.className = 'status-indicator-dot inactive';
-        currentEngineName.textContent = 'TypeSafe AI JEV (API Key Needed)';
-        currentEngineDetail.textContent = 'Please enter your TypeSafe AI API key below to activate JEV';
-        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+        currentEngineName.textContent = 'JEV (OpenRouter) (API Key Needed)';
+        currentEngineDetail.textContent = 'Please enter your OpenRouter API key below to activate JEV';
+        if (engineBadge) engineBadge.textContent = 'JEV (OpenRouter)';
       }
     } else if (selectedModel === 'heuristic') {
       engineStatusDot.className = 'status-indicator-dot';
@@ -191,9 +197,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Auto mode
       if (activeKey) {
         engineStatusDot.className = 'status-indicator-dot';
-        currentEngineName.textContent = 'Auto (TypeSafe JEV Active)';
+        currentEngineName.textContent = 'Auto (JEV Active)';
         currentEngineDetail.textContent = 'JEV active with heuristic fallback';
-        if (engineBadge) engineBadge.textContent = 'TypeSafe AI JEV';
+        if (engineBadge) engineBadge.textContent = 'JEV (OpenRouter)';
       } else {
         engineStatusDot.className = 'status-indicator-dot';
         currentEngineName.textContent = 'Auto (Heuristic Engine Active)';
@@ -321,6 +327,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Renders the analytics panel (distribution, JEV quality, categories)
+  function renderAnalytics(data) {
+    const section = document.getElementById('analyticsSection');
+    if (!section) return;
+    const total = data.totalBlocks || 0;
+    if (!total || !data.distribution) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+
+    document.getElementById('statSlopShare').textContent = `${data.slopWordShare || 0}%`;
+    document.getElementById('statConfidence').textContent =
+      data.avgConfidence === null || data.avgConfidence === undefined ? '–' : `${data.avgConfidence}%`;
+    document.getElementById('statCoverage').textContent = `${data.jevCoverage || 0}%`;
+
+    const parts = [
+      ['clean', 'Clean', data.distribution.clean],
+      ['suspicious', 'Suspicious', data.distribution.suspicious],
+      ['slop', 'Slop', data.distribution.slop]
+    ];
+    const bar = document.getElementById('distBar');
+    const legend = document.getElementById('distLegend');
+    bar.innerHTML = '';
+    legend.innerHTML = '';
+    parts.forEach(([cls, label, n]) => {
+      if (n > 0) {
+        const seg = document.createElement('span');
+        seg.className = `dist-seg ${cls}`;
+        seg.style.width = `${(n / total) * 100}%`;
+        seg.title = `${label}: ${n}`;
+        bar.appendChild(seg);
+      }
+      const item = document.createElement('span');
+      item.className = 'dist-legend-item';
+      const dot = document.createElement('i');
+      dot.className = `dist-dot ${cls}`;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(`${label} ${n}`));
+      legend.appendChild(item);
+    });
+
+    const cats = document.getElementById('categoryBars');
+    cats.innerHTML = '';
+    const list = data.categoryBreakdown || [];
+    const max = list.length ? list[0].count : 1;
+    list.slice(0, 5).forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'category-row';
+      const name = document.createElement('span');
+      name.className = 'category-name';
+      name.textContent = c.label;
+      const track = document.createElement('span');
+      track.className = 'category-track';
+      const fill = document.createElement('span');
+      fill.className = 'category-fill';
+      fill.style.width = `${(c.count / max) * 100}%`;
+      track.appendChild(fill);
+      const count = document.createElement('span');
+      count.className = 'category-count';
+      count.textContent = c.count;
+      row.append(name, track, count);
+      cats.appendChild(row);
+    });
+
+    const note = document.getElementById('topBlockNote');
+    if (data.topBlock && data.topBlock.score >= 35 && data.topBlock.reason) {
+      note.textContent = `Strongest signal (${data.topBlock.score}%): ${data.topBlock.reason}`;
+      note.classList.remove('hidden');
+    } else {
+      note.classList.add('hidden');
+    }
+  }
+
   // Renders analysis results on the UI
   function renderResults(data) {
     const score = data.overallScore || 0;
@@ -360,6 +437,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     statWords.textContent = (data.totalWords || 0).toLocaleString();
     statBlocks.textContent = data.totalBlocks || 0;
     statFlagged.textContent = data.flaggedBlockCount || 0;
+
+    renderAnalytics(data);
+    const errNote = document.getElementById('jevErrorNote');
+    if (errNote) {
+      if (data.jevError) {
+        errNote.textContent = `JEV unavailable, used heuristics: ${data.jevError}`;
+        errNote.classList.remove('hidden');
+      } else {
+        errNote.classList.add('hidden');
+      }
+    }
 
     // Top Indicators
     if (data.topIndicators && data.topIndicators.length > 0) {
@@ -412,6 +500,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         item.appendChild(header);
         item.appendChild(snippet);
+        if (b.reason) {
+          const why = document.createElement('p');
+          why.className = 'block-signals';
+          const conf = (typeof b.confidence === 'number') ? ` (${Math.round(b.confidence * 100)}% confident)` : '';
+          why.textContent = `Why: ${b.reason}${conf}`;
+          item.appendChild(why);
+        }
         if (b.signals && b.signals.length > 0) item.appendChild(signals);
 
         // Click to scroll
@@ -476,17 +571,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   saveSettingsBtn.addEventListener('click', async () => {
     const newKey = apiKeyInput.value.trim();
+    const newJevModel = jevModelInput ? jevModelInput.value.trim() : '';
 
     try {
       if (_browser.storage && _browser.storage.local) {
         await _browser.storage.local.set({
-          TYPESAFE_API_KEY: newKey,
-          SELECTED_MODEL: selectedModel
+          OPENROUTER_API_KEY: newKey,
+          SELECTED_MODEL: selectedModel,
+          JEV_MODEL: newJevModel
         });
       }
       if (typeof window !== 'undefined' && window.ENV) {
-        window.ENV.TYPESAFE_API_KEY = newKey;
+        window.ENV.OPENROUTER_API_KEY = newKey;
         window.ENV.SELECTED_MODEL = selectedModel;
+        if (newJevModel) window.ENV.JEV_MODEL = newJevModel;
       }
 
       await refreshEngineStatus();

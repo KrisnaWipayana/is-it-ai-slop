@@ -1,6 +1,6 @@
 /**
  * Is It AI Slop? - Background Service Worker
- * Handles cross-origin requests to TypeSafe AI's Jev API endpoint.
+ * Handles cross-origin requests to the OpenRouter API (JEV model).
  * Bypasses webpage Content Security Policy (CSP) and CORS restrictions.
  */
 
@@ -12,7 +12,7 @@
   _browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || !message.action) return false;
 
-    // TypeSafe AI JEV API Call
+    // JEV model call via OpenRouter
     if (message.action === 'CALL_JEV_API') {
       handleJevApiCall(message)
         .then(data => sendResponse({ success: true, data }))
@@ -30,35 +30,35 @@
     return false;
   });
 
-  // Dispatches request to TypeSafe AI System One decision API
+  // Dispatches request to the OpenRouter chat completions API
   async function handleJevApiCall(params) {
     const { apiUrl, apiKey, payload } = params;
 
     if (!apiKey) {
-      throw new Error('TypeSafe AI API Key is required. Please set TYPESAFE_API_KEY.');
+      throw new Error('OpenRouter API Key is required. Please set OPENROUTER_API_KEY.');
     }
 
-    const endpoint = apiUrl || 'https://api.typesafe.ai/v1/systemone';
+    const endpoint = apiUrl || 'https://openrouter.ai/api/v1/chat/completions';
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey.trim()}`
+        'Authorization': `Bearer ${apiKey.trim()}`,
+        'X-Title': 'Is It AI Slop?'
       },
       body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-      let errMsg = `TypeSafe AI API returned HTTP ${response.status} (${response.statusText})`;
+      let errMsg = `OpenRouter API returned HTTP ${response.status} (${response.statusText})`;
       try {
         const errorJson = await response.json();
-        if (errorJson && (errorJson.message || errorJson.error)) {
-          errMsg = `TypeSafe AI: ${errorJson.message || errorJson.error}`;
-        }
+        const e = errorJson && errorJson.error;
+        const detail = (e && (e.message || e)) || (errorJson && errorJson.message);
+        if (detail) errMsg = `OpenRouter: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`;
       } catch (_) {
-        const text = await response.text();
-        if (text) errMsg += `: ${text.slice(0, 200)}`;
+        // body was not JSON; keep the status-based message
       }
       throw new Error(errMsg);
     }
@@ -68,21 +68,14 @@
 
   // Lightweight connection probe to verify API Key validity
   async function testJevConnection(params) {
-    const payload = {
-      model: params.model || 'jev-latest',
-      state: 'Test probe',
-      questions: {
-        ping: {
-          type: 'noul',
-          instructions: 'Is this a valid test probe?'
-        }
-      }
-    };
-
     return await handleJevApiCall({
       apiUrl: params.apiUrl,
       apiKey: params.apiKey,
-      payload
+      payload: {
+        model: params.model || 'jev-latest',
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'ping' }]
+      }
     });
   }
 

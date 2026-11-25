@@ -1,7 +1,7 @@
 /**
  * Is It AI Slop? - Text Analyzer
  * Multi-Engine Architecture:
- * 1. TypeSafe AI JEV Engine (Flagship System One decision model from TypeSafe AI)
+ * 1. JEV (OpenRouter) Engine (cloud model called via OpenRouter)
  * 2. Zero-Dependency Linguistic Heuristic Engine (18+ calibrated patterns, cadence, TTR)
  */
 
@@ -30,6 +30,28 @@
     { regex: /\bto\s+sum\s+up\b/i, weight: 10, label: "Boilerplate: 'to sum up'" }
   ];
 
+  // Additional structural tells (LLM prose habits)
+  const STRUCTURE_PATTERNS = [
+    { regex: /\bnot\s+(?:just|only|merely)\b[^.!?]{3,80}?\bbut\s+(?:also\s+)?/i, weight: 14, label: "Structure: 'not just X, but Y'" },
+    { regex: /\b(?:great|excellent|fantastic)\s+question\b|\bI\s+hope\s+this\s+helps\b|\bas\s+an\s+AI\b/i, weight: 25, label: "Chatbot boilerplate" },
+    { regex: /\b(?:whether\s+you['’]?re|whether\s+you\s+are)\b[^.!?]{3,60}\b(?:or|,)\b/i, weight: 12, label: "Marketing: 'whether you're X or Y'" },
+    { regex: /\b(?:revolutioni[sz]e|supercharge|elevate|leverage|streamline|empower)\b/i, weight: 10, label: "Buzzword verb" },
+    { regex: /\b(?:ever[- ]evolving|ever[- ]changing|cutting[- ]edge|state[- ]of[- ]the[- ]art|holistic|robust|myriad)\b/i, weight: 10, label: "Buzzword adjective" }
+  ];
+
+  // Categories the JEV model may report, mapped to readable signal labels
+  const JEV_CATEGORIES = {
+    cliche_phrasing: 'JEV: Cliché phrasing',
+    hollow_buzzwords: 'JEV: Hollow buzzwords',
+    generic_filler: 'JEV: Generic filler, no concrete detail',
+    formulaic_structure: 'JEV: Formulaic structure (rule of three, not-just-but)',
+    uniform_cadence: 'JEV: Uniform sentence cadence',
+    hedging_boilerplate: 'JEV: Hedging boilerplate',
+    promotional_tone: 'JEV: Promotional tone',
+    repetition: 'JEV: Repetitive ideas',
+    no_specifics: 'JEV: Lacks specifics (names, numbers, examples)'
+  };
+
   // AI-typical sentence-starting transition adverbs
   const TRANSITION_STARTERS = /^(furthermore|moreover|additionally|consequently|importantly|notably|ultimately|in essence|in summary)[,\s]/i;
 
@@ -38,11 +60,13 @@
       this.useJev = false;
       this.selectedModel = options.selectedModel || 'auto'; // 'jev' | 'heuristic' | 'auto'
 
-      // TypeSafe AI JEV configuration
+      // JEV (OpenRouter) configuration
       this.apiKey = options.apiKey || '';
-      this.jevApiUrl = options.jevApiUrl || 'https://api.typesafe.ai/v1/systemone';
+      this.jevApiUrl = options.jevApiUrl || 'https://openrouter.ai/api/v1/chat/completions';
       this.jevModel = options.jevModel || 'jev-latest';
       this.maxConcurrency = options.maxConcurrency || 3;
+      this.lastJevError = ''; // most recent JEV failure, surfaced in the popup
+      this.jevCache = new Map(); // text -> JEV result (avoids repeat calls on re-scan)
     }
 
     /**
@@ -74,18 +98,27 @@
     }
 
     /**
-     * Resolves the TypeSafe AI API Key from chrome.storage or window.ENV
+     * Resolves the OpenRouter API Key from chrome.storage or window.ENV
      */
     async resolveApiKey() {
+      // Endpoint / model always come from ENV (if present), independent of where the key is stored
+      const envObj = (typeof window !== 'undefined' ? window.ENV : null) ||
+        (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
+      if (envObj) {
+        if (envObj.JEV_API_URL) this.jevApiUrl = envObj.JEV_API_URL;
+        if (envObj.JEV_MODEL) this.jevModel = envObj.JEV_MODEL;
+      }
+
       if (this.apiKey) return this.apiKey;
 
-      // 1. Try extension storage
+      // 1. Try extension storage (key saved from the popup)
       try {
         const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
         if (_runtime && _runtime.storage && _runtime.storage.local) {
-          const res = await _runtime.storage.local.get(['TYPESAFE_API_KEY']);
-          if (res && res.TYPESAFE_API_KEY && res.TYPESAFE_API_KEY.trim()) {
-            this.apiKey = res.TYPESAFE_API_KEY.trim();
+          const res = await _runtime.storage.local.get(['OPENROUTER_API_KEY', 'JEV_MODEL']);
+          if (res && res.JEV_MODEL && res.JEV_MODEL.trim()) this.jevModel = res.JEV_MODEL.trim();
+          if (res && res.OPENROUTER_API_KEY && res.OPENROUTER_API_KEY.trim()) {
+            this.apiKey = res.OPENROUTER_API_KEY.trim();
             return this.apiKey;
           }
         }
@@ -93,15 +126,9 @@
         // Storage not accessible in this context
       }
 
-      // 2. Try window.ENV or globalThis.ENV
-      const envObj = (typeof window !== 'undefined' ? window.ENV : null) ||
-        (typeof globalThis !== 'undefined' ? globalThis.ENV : null);
-      if (envObj) {
-        if (envObj.TYPESAFE_API_KEY && envObj.TYPESAFE_API_KEY.trim()) {
-          this.apiKey = envObj.TYPESAFE_API_KEY.trim();
-        }
-        if (envObj.JEV_API_URL) this.jevApiUrl = envObj.JEV_API_URL;
-        if (envObj.JEV_MODEL) this.jevModel = envObj.JEV_MODEL;
+      // 2. Fall back to the key in ENV
+      if (envObj && envObj.OPENROUTER_API_KEY && envObj.OPENROUTER_API_KEY.trim()) {
+        this.apiKey = envObj.OPENROUTER_API_KEY.trim();
       }
 
       return this.apiKey;
@@ -132,39 +159,42 @@
     }
 
     /**
-     * Evaluates text using TypeSafe AI JEV System One decision model.
-     * Uses structured questions (noul probability + choice) for instant, calibrated results.
+     * Evaluates text using the JEV model via OpenRouter (chat completions).
+     * The model is asked for a JSON verdict: { is_slop: 0..1, style: human|formulaic|ai_slop }.
      */
     async predictWithJev(text) {
       if (!this.apiKey) return null;
 
+      const cacheKey = text.trim();
+      if (this.jevCache.has(cacheKey)) return this.jevCache.get(cacheKey);
+
       const payload = {
         model: this.jevModel,
-        state: text,
-        questions: {
-          is_slop: {
-            type: 'noul',
-            instructions: 'Is this text AI-generated slop, repetitive boilerplate, or low-quality synthetic content?'
+        temperature: 0,
+        max_tokens: 1000, // headroom: reasoning models spend tokens thinking before the JSON
+        messages: [
+          {
+            role: 'system',
+            content: 'You detect AI-generated slop: generic, padded, formulaic or low-information synthetic text. ' +
+              'Judge only the text given. Prefer concrete evidence (specific names, numbers, first-hand detail, ' +
+              'irregular human voice) as a sign of human writing, and clichés, hollow buzzwords and uniform structure as signs of slop. ' +
+              'Reply with ONLY a JSON object: {"is_slop": <probability 0 to 1>, "confidence": <0 to 1, how sure you are>, ' +
+              '"style": "human" | "formulaic" | "ai_slop", ' +
+              '"categories": [zero or more of: ' + Object.keys(JEV_CATEGORIES).join(', ') + '], ' +
+              '"reason": "<one short sentence citing the strongest evidence>"}.'
           },
-          style_choice: {
-            type: 'choice',
-            instructions: 'Identify the primary writing style of this text:',
-            criteria: {
-              human: 'Authentic human prose with natural voice and cadence',
-              formulaic: 'Formulaic corporate style or standard academic prose',
-              ai_slop: 'Typical AI clichés, repetitive adverbs, or machine-generated filler'
-            }
-          }
-        }
+          { role: 'user', content: text }
+        ]
       };
 
       try {
         const _runtime = (typeof browser !== 'undefined' ? browser : (typeof chrome !== 'undefined' ? chrome : null));
         let responseData = null;
+        let usage = null;
 
         // Route through background service worker to avoid page CSP / CORS restrictions
         if (_runtime && _runtime.runtime && _runtime.runtime.sendMessage) {
-          const response = await new Promise((resolve) => {
+          const callBackground = () => new Promise((resolve) => {
             _runtime.runtime.sendMessage({
               action: 'CALL_JEV_API',
               apiUrl: this.jevApiUrl,
@@ -172,17 +202,27 @@
               payload
             }, (res) => {
               if (_runtime.runtime.lastError) {
-                resolve({ success: false, error: _runtime.runtime.lastError.message });
+                resolve({ success: false, transport: true, error: _runtime.runtime.lastError.message });
               } else {
-                resolve(res || { success: false, error: 'Empty response from background' });
+                resolve(res || { success: false, transport: true, error: 'Empty response from background' });
               }
             });
           });
 
+          let response = await callBackground();
+          // Retry once on transient failures, but never on client errors (4xx other than 429): they won't change
+          const retryable = r => !(r && r.success) && !/HTTP 4(?!29)\d\d|invalid|not a valid|No endpoints|unauthorized|credits/i.test(r?.error || '');
+          if (retryable(response)) {
+            await new Promise(r => setTimeout(r, 600));
+            response = await callBackground();
+          }
           if (response && response.success) {
             responseData = response.data;
           } else {
-            console.warn('[Is It AI Slop?] JEV via background worker failed:', response?.error);
+            this.lastJevError = response?.error || 'No response from background worker';
+            console.warn('[Is It AI Slop?] JEV via background worker failed:', this.lastJevError);
+            // The worker reached OpenRouter and got an API error: a direct fetch would fail the same way
+            if (response && !response.transport) return null;
           }
         }
 
@@ -199,34 +239,45 @@
           if (directRes.ok) {
             responseData = await directRes.json();
           } else {
+            let detail = '';
+            try { const j = await directRes.json(); detail = j?.error?.message || ''; } catch (_) {}
+            this.lastJevError = `HTTP ${directRes.status}${detail ? ': ' + detail : ''}`;
             console.warn(`[Is It AI Slop?] Direct JEV fetch failed: HTTP ${directRes.status}`);
           }
         }
 
-        if (!responseData || !responseData.answers) {
+        const choice = responseData?.choices?.[0];
+        let content = choice?.message?.content;
+        if (Array.isArray(content)) content = content.map(p => p?.text || '').join('');
+        // Some reasoning models put everything in a reasoning field
+        if (!content || !String(content).trim()) content = choice?.message?.reasoning || '';
+        if (!content || !String(content).trim()) {
+          const why = choice?.finish_reason ? ` (finish_reason: ${choice.finish_reason})` : '';
+          this.lastJevError = (responseData?.error?.message || 'Model returned no content') + why;
           return null;
         }
 
-        // Parse JEV typed answers
-        const isSlopAnswer = responseData.answers.is_slop;
-        let probability = null;
-
-        if (typeof isSlopAnswer === 'number') {
-          probability = isSlopAnswer;
-        } else if (isSlopAnswer && typeof isSlopAnswer.noul === 'number') {
-          probability = isSlopAnswer.noul;
-        } else if (isSlopAnswer && typeof isSlopAnswer.score === 'number') {
-          probability = isSlopAnswer.score;
+        // Extract the JSON verdict (tolerate code fences / surrounding prose)
+        const match = String(content).match(/\{[\s\S]*\}/);
+        let answers = null;
+        try { answers = match ? JSON.parse(match[0]) : null; } catch (_) {}
+        if (!answers) {
+          this.lastJevError = 'Model reply was not valid JSON';
+          return null;
         }
 
-        if (probability === null) return null;
+        let probability = Number(answers.is_slop);
+        if (!Number.isFinite(probability)) return null;
+        if (probability > 1) probability /= 100; // tolerate 0-100 scale
 
         const score = Math.min(Math.max(Math.round(probability * 100), 0), 100);
-        const signals = [];
+        let confidence = Number(answers.confidence);
+        if (!Number.isFinite(confidence)) confidence = 0.7;
+        if (confidence > 1) confidence /= 100;
+        confidence = Math.min(Math.max(confidence, 0), 1);
 
-        // Parse style choice if provided by JEV
-        const styleChoice = responseData.answers.style_choice;
-        const choiceKey = (typeof styleChoice === 'string') ? styleChoice : (styleChoice?.choice || styleChoice?.value || '');
+        const signals = [];
+        const choiceKey = answers.style;
         if (choiceKey === 'ai_slop') {
           signals.push('JEV: Machine-generated slop signature');
         } else if (choiceKey === 'formulaic') {
@@ -235,8 +286,20 @@
           signals.push('JEV: Authentic human prose');
         }
 
-        return { score, signals, rawAnswers: responseData.answers };
+        // Category signals only make sense when the verdict leans slop
+        const categories = (Array.isArray(answers.categories) ? answers.categories : [])
+          .filter(c => JEV_CATEGORIES[c]);
+        if (score >= 35) {
+          for (const c of categories) signals.push(JEV_CATEGORIES[c]);
+        }
+        const reason = typeof answers.reason === 'string' ? answers.reason.trim().slice(0, 240) : '';
+
+        const result = { score, confidence, signals, categories, reason, style: choiceKey || null, rawAnswers: answers };
+        if (this.jevCache.size > 500) this.jevCache.clear();
+        this.jevCache.set(cacheKey, result);
+        return result;
       } catch (err) {
+        this.lastJevError = err.message || String(err);
         console.warn('[Is It AI Slop?] JEV prediction error:', err.message || err);
         return null;
       }
@@ -288,6 +351,42 @@
           signals.push(pattern.label + (m.length > 1 ? ` (×${m.length})` : ''));
         }
       }
+      let structureScore = 0;
+      for (const pattern of STRUCTURE_PATTERNS) {
+        const m = text.match(new RegExp(pattern.regex, 'gi'));
+        if (m) {
+          structureScore += Math.min(pattern.weight * m.length, pattern.weight * 2);
+          signals.push(pattern.label + (m.length > 1 ? ` (×${m.length})` : ''));
+        }
+      }
+
+      // Em-dash overuse and "rule of three" lists are common LLM tells
+      const emDashes = (text.match(/\u2014/g) || []).length;
+      const emDashDensity = (emDashes / wordCount) * 100.0;
+      if (emDashes >= 2 && emDashDensity >= 1.0) {
+        structureScore += 10;
+        signals.push(`Em-dash overuse (${emDashes})`);
+      }
+      const ruleOfThree = (text.match(/\b[\p{L}-]+,\s+[\p{L}-]+,?\s+and\s+[\p{L}-]+\b/giu) || []).length;
+      if (ruleOfThree >= 2) {
+        structureScore += 10;
+        signals.push(`Rule-of-three lists (×${ruleOfThree})`);
+      }
+
+      // Repetitive sentence openers (same first word on >=40% of sentences)
+      if (sentences.length >= 4) {
+        const starts = {};
+        for (const sn of sentences) {
+          const w = (sn.match(/^[\p{L}']+/u) || [''])[0].toLowerCase();
+          if (w) starts[w] = (starts[w] || 0) + 1;
+        }
+        const maxStart = Math.max(...Object.values(starts));
+        if (maxStart / sentences.length >= 0.4) {
+          structureScore += 10;
+          signals.push('Repetitive sentence openers');
+        }
+      }
+
       const clicheDensity = (clicheHits / wordCount) * 100.0;
 
       // Signals for explainability
@@ -335,7 +434,8 @@
         sentCount,
         ttr,
         clicheHits,
-        transitionRatio
+        transitionRatio,
+        structureScore
       };
     }
 
@@ -409,7 +509,7 @@
 
     // Pure heuristic scoring fallback
     computeHeuristicScore(extracted) {
-      const { wordCount, clicheHits, transitionRatio, ttr, featureVector } = extracted;
+      const { wordCount, clicheHits, transitionRatio, ttr, featureVector, structureScore = 0 } = extracted;
       if (wordCount < 12) return 0;
 
       const stdSentLen = featureVector[3];
@@ -417,6 +517,7 @@
 
       let rawScore = 0;
       rawScore += Math.min(clicheHits * 22, 65);
+      rawScore += Math.min(structureScore, 30);
 
       if (transitionRatio >= 0.3) rawScore += 18;
       if (stdSentLen < 3.5 && avgSentLen > 14) rawScore += 14;
@@ -449,6 +550,7 @@
       let totalWeightedScore = 0;
       const indicatorCounts = {};
       let usedJevCount = 0;
+      this.lastJevError = '';
 
       // Analyze each block (chunk) concurrently with pooled calls
       const analyzedBlocks = await this.mapConcurrent(blocks, this.maxConcurrency, async (block) => {
@@ -457,10 +559,16 @@
         let allSignals = [...extracted.signals];
 
         let jevSuccess = false;
+        let jevInfo = null;
         if (this.useJev) {
           const jevResult = await this.predictWithJev(block.text);
           if (jevResult !== null) {
-            finalScore = jevResult.score;
+            // Ensemble: JEV leads, local heuristics nudge it when they see hard evidence.
+            // Low-confidence JEV verdicts lean more on heuristics.
+            const heuristic = this.computeHeuristicScore(extracted);
+            const heuristicWeight = heuristic > 0 ? 0.35 - 0.2 * jevResult.confidence : 0;
+            finalScore = Math.round((1 - heuristicWeight) * jevResult.score + heuristicWeight * Math.max(heuristic, jevResult.score * 0.5));
+            jevInfo = { confidence: jevResult.confidence, reason: jevResult.reason, style: jevResult.style, categories: jevResult.categories, jevScore: jevResult.score };
             if (jevResult.signals && jevResult.signals.length > 0) {
               allSignals = [...jevResult.signals, ...allSignals];
             }
@@ -479,6 +587,9 @@
           score: finalScore,
           classification: this.getClassification(finalScore),
           signals: allSignals,
+          reason: jevInfo ? jevInfo.reason : '',
+          confidence: jevInfo ? jevInfo.confidence : null,
+          jev: jevInfo,
           metrics: {
             wordCount: extracted.wordCount,
             sentCount: extracted.sentCount,
@@ -508,22 +619,43 @@
 
       const durationMs = Math.round(performance.now() - startTime);
 
+      // Richer analytics
+      const categoryCounts = {};
+      let confSum = 0, confN = 0;
+      for (const b of analyzedBlocks) {
+        if (b.jev) {
+          confSum += b.confidence; confN++;
+          if (b.score >= 35) for (const c of b.jev.categories) categoryCounts[c] = (categoryCounts[c] || 0) + 1;
+        }
+      }
+      const categoryBreakdown = Object.entries(categoryCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, count]) => ({ key, label: JEV_CATEGORIES[key].replace('JEV: ', ''), count }));
+      const distribution = {
+        clean: analyzedBlocks.filter(b => b.classification === 'clean').length,
+        suspicious: analyzedBlocks.filter(b => b.classification === 'suspicious').length,
+        slop: highSlopBlocks.length
+      };
+      const wordsFlagged = flaggedBlocks.reduce((a, b) => a + b.wordCount, 0);
+      const slopWordShare = totalWords > 0 ? Math.round((wordsFlagged / totalWords) * 100) : 0;
+      const topBlock = analyzedBlocks.reduce((m, b) => (!m || b.score > m.score ? b : m), null);
+
       // Determine active engine label
       let engineName = 'Linguistic Heuristics';
       if (this.selectedModel === 'heuristic') {
         engineName = 'Linguistic Heuristics';
       } else if (this.selectedModel === 'jev') {
         if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
-          engineName = 'TypeSafe AI (JEV System One)';
+          engineName = 'JEV (OpenRouter)';
         } else if (this.apiKey) {
-          engineName = 'TypeSafe AI JEV (Fallback)';
+          engineName = 'JEV (OpenRouter) (Fallback)';
         } else {
-          engineName = 'TypeSafe JEV (Key Missing)';
+          engineName = 'JEV (Key Missing)';
         }
       } else {
         // Auto mode
         if (usedJevCount > 0 || (this.useJev && blocks.length === 0)) {
-          engineName = 'TypeSafe AI (JEV System One)';
+          engineName = 'JEV (OpenRouter)';
         } else {
           engineName = 'Linguistic Heuristics';
         }
@@ -540,6 +672,13 @@
         highSlopCount: highSlopBlocks.length,
         durationMs,
         topIndicators,
+        categoryBreakdown,
+        distribution,
+        slopWordShare,
+        avgConfidence: confN ? Math.round((confSum / confN) * 100) : null,
+        jevCoverage: blocks.length ? Math.round((usedJevCount / blocks.length) * 100) : 0,
+        jevError: usedJevCount < blocks.length && this.useJev ? this.lastJevError : '',
+        topBlock: topBlock ? { id: topBlock.id, score: topBlock.score, reason: topBlock.reason || '' } : null,
         blocks: analyzedBlocks
       };
     }

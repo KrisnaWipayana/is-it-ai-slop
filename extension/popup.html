@@ -32,18 +32,18 @@
           </div>
 
           <p class="settings-intro">
-            Choose your AI detection model or connect to <strong>TypeSafe AI JEV</strong> (System One decision model).
+            Choose your AI detection model or connect to <strong>JEV (OpenRouter)</strong>.
           </p>
 
           <div class="form-group">
             <label class="form-label">Evaluation Model</label>
             <div class="model-toggle-group" id="modelToggleGroup" role="radiogroup" aria-label="Model Selection">
-              <button type="button" class="model-toggle-btn active" data-model="jev" role="radio" aria-checked="true" title="TypeSafe AI JEV Cloud Engine">
+              <button type="button" class="model-toggle-btn active" data-model="jev" role="radio" aria-checked="true" title="JEV (OpenRouter) Cloud Engine">
                 <div class="model-btn-top">
-                  <span class="model-btn-name">TypeSafe JEV</span>
+                  <span class="model-btn-name">JEV</span>
                   <span class="model-btn-badge">Cloud</span>
                 </div>
-                <span class="model-btn-desc">System One decision model</span>
+                <span class="model-btn-desc">via OpenRouter</span>
               </button>
               <button type="button" class="model-toggle-btn" data-model="heuristic" role="radio" aria-checked="false" title="Zero-Dependency Linguistic Heuristics">
                 <div class="model-btn-top">
@@ -60,23 +60,29 @@
                 <span class="model-btn-desc">JEV → Heuristics</span>
               </button>
             </div>
-            <p id="modelHelpText" class="model-help-text">TypeSafe AI JEV: Ultra-fast System One decision model evaluating calibrated probabilities in parallel.</p>
+            <p id="modelHelpText" class="model-help-text">JEV via OpenRouter: cloud model scoring how likely the text is AI-generated.</p>
           </div>
 
           <div class="form-group" id="apiKeyFormGroup">
-            <label for="apiKeyInput" class="form-label">TypeSafe AI API Key <span id="apiKeyRequiredHint" class="label-hint">(Required for JEV)</span></label>
+            <label for="apiKeyInput" class="form-label">OpenRouter API Key <span id="apiKeyRequiredHint" class="label-hint">(Required for JEV)</span></label>
             <div class="input-row">
               <input type="password" id="apiKeyInput" class="form-input" placeholder="Paste your API key here..." autocomplete="off">
               <button id="toggleKeyVisibility" class="secondary-btn small-btn" type="button">Show</button>
             </div>
-            <span class="form-help">Configurable via <code>.env</code>, <code>env.js</code>, or saved securely here in browser storage.</span>
+            <span class="form-help">Saved in your browser's local storage only (never written to project files).</span>
+          </div>
+
+          <div class="form-group" id="jevModelFormGroup">
+            <label for="jevModelInput" class="form-label">OpenRouter Model or Preset</label>
+            <input type="text" id="jevModelInput" class="form-input" placeholder="@preset/jev or vendor/model-name" autocomplete="off" spellcheck="false">
+            <span class="form-help">Any OpenRouter model slug or <code>@preset/your-preset</code>. Leave empty for the default.</span>
           </div>
 
           <div class="engine-status-box">
             <div class="status-indicator-dot" id="engineStatusDot"></div>
             <div class="status-info">
-              <span class="status-name" id="currentEngineName">TypeSafe AI JEV</span>
-              <span class="status-detail" id="currentEngineDetail">Ready for fast System One decision evaluation</span>
+              <span class="status-name" id="currentEngineName">JEV (OpenRouter)</span>
+              <span class="status-detail" id="currentEngineDetail">Ready for JEV evaluation via OpenRouter</span>
             </div>
           </div>
 
@@ -100,10 +106,10 @@
           <div class="idle-model-selector">
             <div class="idle-model-header">
               <span class="idle-model-label">Model</span>
-              <span id="activeModelTag" class="active-model-tag">TypeSafe JEV</span>
+              <span id="activeModelTag" class="active-model-tag">JEV</span>
             </div>
             <div class="model-segmented-control" id="idleModelSelector" role="radiogroup" aria-label="Quick Model Select">
-              <button type="button" class="segmented-btn active" data-model="jev" title="TypeSafe AI JEV (Cloud)">JEV</button>
+              <button type="button" class="segmented-btn active" data-model="jev" title="JEV (OpenRouter) (Cloud)">JEV</button>
               <button type="button" class="segmented-btn" data-model="heuristic" title="Linguistic Heuristics (Local)">Rules</button>
               <button type="button" class="segmented-btn" data-model="auto" title="Automatic Engine Fallback">Auto</button>
             </div>
@@ -142,7 +148,7 @@
           <div class="verdict-container">
             <div class="verdict-header-row">
               <span id="verdictBadge" class="verdict-badge clean">Likely Human</span>
-              <span id="engineBadge" class="engine-badge">TypeSafe AI JEV</span>
+              <span id="engineBadge" class="engine-badge">JEV (OpenRouter)</span>
             </div>
             <p id="verdictDesc" class="verdict-desc">Content appears natural with low AI markers.</p>
           </div>
@@ -162,6 +168,34 @@
             <span class="stat-label">Flagged</span>
             <span id="statFlagged" class="stat-value">0</span>
           </div>
+        </div>
+
+        <!-- JEV error -->
+        <p id="jevErrorNote" class="jev-error-note hidden"></p>
+
+        <!-- Analytics -->
+        <div id="analyticsSection" class="section hidden">
+          <div class="section-header">
+            <span class="section-title">Analytics</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-item">
+              <span class="stat-label">Slop words</span>
+              <span id="statSlopShare" class="stat-value">0%</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Confidence</span>
+              <span id="statConfidence" class="stat-value">–</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">JEV coverage</span>
+              <span id="statCoverage" class="stat-value">0%</span>
+            </div>
+          </div>
+          <div class="dist-bar" id="distBar" role="img" aria-label="Block distribution"></div>
+          <div class="dist-legend" id="distLegend"></div>
+          <div id="categoryBars" class="category-bars"></div>
+          <p id="topBlockNote" class="top-block-note hidden"></p>
         </div>
 
         <!-- In-page Highlight Toggle -->

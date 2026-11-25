@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Is It AI Slop?",
   "version": "1.1.0",
-  "description": "Minimalist browser extension to detect AI-generated slop and low-quality boilerplate text on websites using TypeSafe AI JEV and heuristics.",
+  "description": "Minimalist browser extension to detect AI-generated slop and low-quality boilerplate text on websites using JEV (OpenRouter) and heuristics.",
 
   "browser_specific_settings": {
     "gecko": {
@@ -22,11 +22,12 @@
   },
 
   "host_permissions": [
-    "https://api.typesafe.ai/*"
+    "https://openrouter.ai/*"
   ],
 
   "background": {
-    "service_worker": "scripts/background.js"
+    "service_worker": "scripts/background.js",
+    "scripts": ["scripts/background.js"]
   },
 
   "action": {
@@ -55,15 +56,6 @@
         "scripts/content.js"
       ],
       "run_at": "document_idle"
-    }
-  ],
-
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "env.js"
-      ],
-      "matches": ["<all_urls>"]
     }
   ]
 }
